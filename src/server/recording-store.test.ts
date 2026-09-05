@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { RecordingStore, type RecordedScene } from "@/server/recording-store";
-import { requestGeminiPlan } from "@/server/gemini-planner";
+import { requestTokenPayPlan } from "@/server/tokenpay-planner";
 
 const scene: RecordedScene = {
   teacherId: "monomi",
@@ -18,19 +18,17 @@ test("actual request and public response survive a new store instance without au
   t.after(() => rm(root, { recursive: true, force: true }));
   const store = new RecordingStore(root);
   const order: string[] = [];
-  await requestGeminiPlan({ apiKey: "secret-test-key", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => {
+  await requestTokenPayPlan({ apiKey: "secret-test-key", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => {
     order.push(kind); store.record(scene.sessionId, kind, data);
   } }, async () => {
     assert.deepEqual(order, ["planner-request"]);
-    return Response.json({ usageMetadata: { totalTokenCount: 42 }, candidates: [{ content: { parts: [
-      { thought: true, text: "private-thought" }, { text: '{"title":"重力"}' },
-    ] } }] });
+    return Response.json({ usage: { total_tokens: 42 }, choices: [{ message: { reasoning_content: "private-thought", content: '{"title":"重力"}' } }] });
   });
   new RecordingStore(root).record(scene.sessionId, "video-failed", { requestId: "mock-request-1", message: "HTTP 503", actualBilledCost: null });
   const text = await readFile(join(root, scene.sessionId, "events.jsonl"), "utf8");
   const events = text.trim().split("\n").map((line) => JSON.parse(line));
   assert.deepEqual(events.map((e) => e.kind), ["planner-request", "planner-response", "video-failed"]);
-  assert.equal(events[1].data.usage.totalTokenCount, 42);
+  assert.equal(events[1].data.usage.total_tokens, 42);
   assert.equal(events[2].data.actualBilledCost, null);
   assert.doesNotMatch(text, /secret-test-key|private-thought|x-goog-api-key/);
 });
@@ -62,7 +60,7 @@ test("unwritable recording boundary blocks the provider before any call", async 
   await writeFile(blocked, "file");
   const store = new RecordingStore(blocked);
   let calls = 0;
-  await assert.rejects(requestGeminiPlan({ apiKey: "mock", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => store.record(scene.sessionId, kind, data) }, async () => {
+  await assert.rejects(requestTokenPayPlan({ apiKey: "mock", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => store.record(scene.sessionId, kind, data) }, async () => {
     calls += 1; throw new Error("must not call");
   }), /Cannot save/);
   assert.equal(calls, 0);

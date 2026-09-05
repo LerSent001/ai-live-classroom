@@ -32,7 +32,7 @@ const server = spawn(
   ["run", "start", "--", "-H", "127.0.0.1", "-p", String(port)],
   {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), TOKENDANCE_API_KEY: "", GEMINI_API_KEY: "", SAVE_RECORDINGS: "0" },
+    env: { ...process.env, PORT: String(port), TOKENDANCE_API_KEY: "", GEMINI_API_KEY: "", SAVE_RECORDINGS: "0", TOKENPAY_PUBLIC_URL: baseUrl },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   },
@@ -51,12 +51,14 @@ try {
   check(page.includes("classroom-entrance-loading") && page.includes("正在进入教室"), "home page renders the loading screen before hydration");
   check(!page.includes('id="lesson-topic"'), "lesson input waits for the classroom entrance to finish");
 
+  let cookie = "";
   const sessionId = "classroom-no-spend-verification";
   const createResponse = await fetch(`${baseUrl}/api/classroom`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: baseUrl, cookie },
     body: JSON.stringify({ sessionId }),
   });
+  cookie = createResponse.headers.get("set-cookie").split(";")[0];
   const created = await createResponse.json();
   check(created.outcome.snapshot.teacherId === "monokuma", "new sessions default to Monokuma");
   check(createResponse.status === 200, "idle classroom session can be created");
@@ -68,7 +70,7 @@ try {
 
   const startResponse = await fetch(`${baseUrl}/api/classroom/${sessionId}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: baseUrl, cookie },
     body: JSON.stringify({
       kind: "start",
       teacherId: "monomi",
@@ -87,8 +89,14 @@ try {
     "missing-key start fails before lesson planning or any H3 admission",
   );
 
+  const stranger = await fetch(`${baseUrl}/api/classroom/${sessionId}`);
+  check(stranger.status === 404, "another browser cannot read this classroom");
+  const csrf = await fetch(`${baseUrl}/api/tokenpay/disconnect`, { method: "POST", headers: { cookie, origin: "https://evil.example" } });
+  check(csrf.status === 403, "cross-origin wallet changes are rejected");
+  const status = await fetch(`${baseUrl}/api/tokenpay/status`, { headers: { cookie } });
+  check((await status.json()).connected === false, "wallet status exposes no shared server credentials");
   const invalidTeacher = await fetch(`${baseUrl}/api/classroom/${sessionId}`, {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: { "content-type": "application/json", origin: baseUrl, cookie },
     body: JSON.stringify({ kind: "start", teacherId: "tung", id: "invalid-teacher", topic: "重力", durationSeconds: 30, atMs: Date.now() }),
   });
   check(invalidTeacher.status === 400, "unknown teachers are rejected at the API boundary");

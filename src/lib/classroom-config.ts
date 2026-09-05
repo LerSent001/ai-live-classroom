@@ -119,7 +119,7 @@ export const CLASSROOM_CONFIG = {
   maxLessonScenes: 6,
   maxQueuedLessons: 1,
   maxPlannerAttempts: 1,
-  // Legacy local admission counters, not a TokenDance price or actual bill. Gemini is separate.
+  // Legacy local admission counters, not a TokenDance price or actual bill. Planning is billed separately.
   planningAttemptCostCents: 0,
   // Retained scheduling weight; TokenDance prices have not been reconciled yet.
   videoAttemptCostCents: 5,
@@ -187,7 +187,6 @@ export function h3InputForPrompt(prompt: string) {
 }
 
 export const LESSON_PLANNER_CONFIG = {
-  geminiModel: "gemini-3.1-flash-lite",
   preparationMaxTokens: 8_000,
   temperature: 0.35,
 } as const;

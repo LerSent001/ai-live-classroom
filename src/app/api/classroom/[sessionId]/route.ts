@@ -1,3 +1,4 @@
+import { checkOrigin, ownerFrom } from "@/server/tokenpay-wallet";
 import {
   parseClassroomCommand,
   toClassroomSessionId,
@@ -27,12 +28,15 @@ async function sessionIdFrom(context: ClassroomRouteContext) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: ClassroomRouteContext,
 ): Promise<Response> {
+  const owner = ownerFrom(request);
+  if (!owner) return errorResponse(404, "SESSION_NOT_FOUND", "请刷新课堂。");
+  if (request.method !== "GET" && !checkOrigin(request)) return errorResponse(403, "ORIGIN", "请求来源无效。");
   try {
     const sessionId = await sessionIdFrom(context);
-    const snapshot = getClassroomRuntime().view(sessionId);
+    const snapshot = getClassroomRuntime(owner).view(sessionId);
     if (!snapshot) {
       return errorResponse(404, "SESSION_NOT_FOUND", "The classroom session was not found.");
     }
@@ -54,6 +58,9 @@ export async function POST(
   request: Request,
   context: ClassroomRouteContext,
 ): Promise<Response> {
+  const owner = ownerFrom(request);
+  if (!owner) return errorResponse(404, "SESSION_NOT_FOUND", "请刷新课堂。");
+  if (request.method !== "GET" && !checkOrigin(request)) return errorResponse(403, "ORIGIN", "请求来源无效。");
   let body: unknown;
   try {
     body = await request.json();
@@ -63,14 +70,14 @@ export async function POST(
   try {
     const sessionId = await sessionIdFrom(context);
     const command = parseClassroomCommand(body);
-    const saved = getSavedClassrooms();
+    const saved = getSavedClassrooms(owner);
     const match = command.kind === "start" && command.durationSeconds === DEMO_CONFIG.initialDurationSeconds
       ? saved.find(command.topic, command.teacherId)
       : null;
     // Known recordings never fall through to a new paid request, even if a file is missing.
     const outcome = match
-      ? getClassroomRuntime().replay(sessionId, saved.load(match.recordingId), command.id)
-      : getClassroomRuntime().command(sessionId, command);
+      ? getClassroomRuntime(owner).replay(sessionId, saved.load(match.recordingId), command.id)
+      : getClassroomRuntime(owner).command(sessionId, command);
     if (!outcome) {
       return errorResponse(404, "SESSION_NOT_FOUND", "The classroom session was not found.");
     }
@@ -86,12 +93,15 @@ export async function POST(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: ClassroomRouteContext,
 ): Promise<Response> {
+  const owner = ownerFrom(request);
+  if (!owner) return errorResponse(404, "SESSION_NOT_FOUND", "请刷新课堂。");
+  if (request.method !== "GET" && !checkOrigin(request)) return errorResponse(403, "ORIGIN", "请求来源无效。");
   try {
     const sessionId = await sessionIdFrom(context);
-    const cleared = await getClassroomRuntime().clear(sessionId);
+    const cleared = await getClassroomRuntime(owner).clear(sessionId);
     if (!cleared) {
       return errorResponse(
         409,

@@ -1,4 +1,6 @@
 import "server-only";
+import { createHash } from "node:crypto";
+import { wallets } from "@/server/tokenpay-wallet";
 
 import { DEMO_CONFIG, H3_MAX_CONFIG, demoPricingAvailable, h3InputForPrompt } from "@/lib/classroom-config";
 import { ClassroomRuntime } from "@/server/classroom-runtime";
@@ -7,20 +9,16 @@ import { createRecordingStore } from "@/server/archive";
 import { generateTokenPayVideo } from "@/server/tokenpay-video";
 import { compileLessonScene, prepareLesson } from "@/server/lesson-producer";
 
-function envKey(name: "TOKENDANCE_API_KEY" | "GEMINI_API_KEY"): string | null {
-  const key = process.env[name]?.trim();
-  return key ? key : null;
-}
-
-function createRuntime(): ClassroomPlaylistRuntime {
-  const recordings = createRecordingStore();
+function createRuntime(owner: string, credentialId: string): ClassroomPlaylistRuntime {
+  const recordings = createRecordingStore(owner);
+  const sessionKeys = new Map<string, string>();
   const worker = new ClassroomRuntime({
-    configured: () => envKey("TOKENDANCE_API_KEY") !== null && envKey("GEMINI_API_KEY") !== null,
+    configured: () => wallets.get(owner) !== null && fingerprint(wallets.get(owner)) === credentialId,
     fixture: () => false,
     prepare: async ({ sessionId, topic, durationSeconds, teacherId }) => {
-      const key = envKey("GEMINI_API_KEY");
-      if (!key || !envKey("TOKENDANCE_API_KEY")) {
-        return { ok: false, message: "TOKENDANCE_API_KEY and GEMINI_API_KEY are required.", plannerAttemptsUsed: 1 };
+      const key = wallets.get(owner);
+      if (!key || fingerprint(key) !== credentialId) {
+        return { ok: false, message: "请先连接自己的 TokenPay 钱包。", plannerAttemptsUsed: 1 };
       }
       if (!demoPricingAvailable()) {
         return { ok: false, message: "The local pricing review deadline has passed. Review the video price before starting.", plannerAttemptsUsed: 1 };
@@ -30,8 +28,9 @@ function createRuntime(): ClassroomPlaylistRuntime {
         estimatedVideoCostCents: null,
         actualBilledCost: null,
       });
+      sessionKeys.set(sessionId, key);
       const result = await prepareLesson({
-        topic, durationSeconds, teacherId, geminiKey: key,
+        topic, durationSeconds, teacherId, tokenpayKey: key,
         record: recordings ? (kind, data) => {
           if (kind === "planner-request") recordings.record(sessionId, kind, data);
           else recordings.afterRequest(() => recordings.record(sessionId, kind, data));
@@ -42,12 +41,12 @@ function createRuntime(): ClassroomPlaylistRuntime {
     },
     compile: compileLessonScene,
     render: async ({ sessionId, plan }) => {
-      const key = envKey("TOKENDANCE_API_KEY");
-      if (!key) {
+      const key = wallets.get(owner);
+      if (!key || sessionKeys.get(sessionId) !== key) {
         return {
           ok: false,
           reason: "render-failed",
-          message: "TOKENDANCE_API_KEY is missing. Add it to .env.local and restart the app.",
+          message: "钱包已断开或切换，请重新开始课程。",
         };
       }
       if (!demoPricingAvailable()) {
@@ -111,11 +110,16 @@ function createRuntime(): ClassroomPlaylistRuntime {
   } : undefined);
 }
 
-declare global {
-  var classroomRuntimeTokenPayV1: ClassroomPlaylistRuntime | undefined;
-}
-
-export function getClassroomRuntime(): ClassroomPlaylistRuntime {
-  globalThis.classroomRuntimeTokenPayV1 ??= createRuntime();
-  return globalThis.classroomRuntimeTokenPayV1;
+function fingerprint(key: string | null): string { return createHash("sha256").update(key || "").digest("hex"); }
+const globalRuntime = globalThis as typeof globalThis & { classroomWalletRuntimesV2?: Map<string, { credentialId: string; runtime: ClassroomPlaylistRuntime }> };
+export function getClassroomRuntime(owner: string): ClassroomPlaylistRuntime {
+  if (!/^[a-f0-9]{64}$/.test(owner)) throw new Error("请刷新课堂。");
+  const runtimes = globalRuntime.classroomWalletRuntimesV2 ??= new Map();
+  const credentialId = fingerprint(wallets.get(owner));
+  let entry = runtimes.get(owner);
+  if (!entry || entry.credentialId !== credentialId) {
+    entry = { credentialId, runtime: createRuntime(owner, credentialId) };
+    runtimes.set(owner, entry);
+  }
+  return entry.runtime;
 }

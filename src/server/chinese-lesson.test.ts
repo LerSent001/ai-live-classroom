@@ -4,7 +4,7 @@ import { parseClassroomCommand } from "@/lib/classroom-boundaries";
 import { compileH3ScenePrompt, preparationPrompt } from "@/lib/classroom-config";
 import { isLessonSubmitKey, isValidTopic } from "@/lib/lesson-language";
 import { parseInitialLesson } from "@/server/lesson-plan";
-import { requestGeminiPlan } from "@/server/gemini-planner";
+import { requestTokenPayPlan } from "@/server/tokenpay-planner";
 
 test("short Chinese topics work for initial and follow-up commands with one shared limit", () => {
   for (const topic of ["重力", "光合作用", "  AI  ", "用中文讲解 F=ma"]) {
@@ -38,9 +38,9 @@ test("Chinese planner output reaches validated lesson and H3 dialogue unchanged"
   const prompt = preparationPrompt("重力", 2, "monokuma");
   assert.match(prompt, /Simplified Chinese/);
   assert.match(prompt, /natural spoken Mandarin/);
-  const output = await requestGeminiPlan({ apiKey: "mock", prompt, systemPrompt: "JSON" }, async (_url, init) => {
+  const output = await requestTokenPayPlan({ apiKey: "mock", prompt, systemPrompt: "JSON" }, async (_url, init) => {
     assert.ok(String(init?.body).includes("重力"));
-    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(script) }] } }] });
+    return Response.json({ choices: [{ message: { content: JSON.stringify(script) } }] });
   });
   const lesson = parseInitialLesson({ teacherId: "monokuma", topic: "重力", durationSeconds: 10, output, latencyMs: 1, preparedBy: "mock" });
   assert.deepEqual(lesson.suggestedTopics, ["月球", "失重", "轨道"]);

@@ -13,3 +13,6 @@ output/
 *.log
 *.pem
 *.key
+
+# Encrypted per-browser wallets and encryption secret
+.tokenpay/

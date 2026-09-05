@@ -297,7 +297,7 @@ export class ClassroomRuntime {
       return { kind: "snapshot", snapshot: this.snapshot(session) };
     }
     if (!this.dependencies.configured()) {
-      session.warning = "TOKENDANCE_API_KEY and GEMINI_API_KEY are required. Add both to .env.local and restart the app.";
+      session.warning = "请先在右上角连接自己的 TokenPay 钱包。";
       this.log(session, "error", session.warning, atMs);
       this.touch(session);
       return { kind: "snapshot", snapshot: this.snapshot(session) };

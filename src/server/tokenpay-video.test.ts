@@ -93,6 +93,6 @@ test("runtime is wired to TokenPay and the old SDK is not a dependency", () => {
   const runtime = readFileSync(new URL("./classroom-runtime-instance.ts", import.meta.url), "utf8");
   const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
   assert.match(runtime, /generateTokenPayVideo\(/);
-  assert.match(runtime, /TOKENDANCE_API_KEY/);
+  assert.match(runtime, /wallets.get\(owner\)/);
   assert.equal(Object.keys(pkg.dependencies).some((name) => name.includes("fal-ai")), false);
 });

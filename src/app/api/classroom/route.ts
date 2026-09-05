@@ -1,3 +1,4 @@
+import { checkOrigin, newOwner, ownerFrom } from "@/server/tokenpay-wallet";
 import { parseCreateClassroomRequest } from "@/lib/classroom-boundaries";
 import type { ClassroomApiResponse } from "@/lib/classroom-types";
 import { getClassroomRuntime } from "@/server/classroom-runtime-instance";
@@ -13,6 +14,9 @@ function errorResponse(status: number, code: string, message: string): Response 
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (!checkOrigin(request)) return errorResponse(403, "ORIGIN", "请求来源无效。");
+  const existing = ownerFrom(request);
+  const identity = existing ? { owner: existing, cookie: "" } : newOwner();
   let body: unknown;
   try {
     body = await request.json();
@@ -25,10 +29,10 @@ export async function POST(request: Request): Promise<Response> {
       ok: true,
       outcome: {
         kind: "snapshot",
-        snapshot: getClassroomRuntime().create(input),
+        snapshot: getClassroomRuntime(identity.owner).create(input),
       },
     };
-    return Response.json(response, { headers: { "cache-control": "no-store" } });
+    return Response.json(response, { headers: { "cache-control": "no-store", ...(identity.cookie ? { "set-cookie": identity.cookie } : {}) } });
   } catch (error) {
     return errorResponse(
       400,

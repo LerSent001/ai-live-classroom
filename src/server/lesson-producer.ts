@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  LESSON_PLANNER_CONFIG,
   sceneCountForDuration,
   preparationPrompt,
   PLANNER_SYSTEM_PROMPT,
@@ -11,20 +10,20 @@ import type {
   PreparationResult,
   TeacherId,
 } from "@/lib/classroom-types";
-import { requestGeminiPlan, type PlannerRecorder } from "@/server/gemini-planner";
+import { requestTokenPayPlan, type PlannerRecorder } from "@/server/tokenpay-planner";
 import { parseInitialLesson } from "@/server/lesson-plan";
 
 export async function prepareLesson(input: {
   teacherId: TeacherId;
   topic: string;
   durationSeconds: LessonDurationSeconds;
-  geminiKey: string;
+  tokenpayKey: string;
   record?: PlannerRecorder;
 }): Promise<PreparationResult> {
   const startedAtMs = Date.now();
   try {
-    const output = await requestGeminiPlan({
-      apiKey: input.geminiKey,
+    const output = await requestTokenPayPlan({
+      apiKey: input.tokenpayKey,
       record: input.record,
       prompt: preparationPrompt(input.topic, sceneCountForDuration(input.durationSeconds), input.teacherId),
       systemPrompt: PLANNER_SYSTEM_PROMPT,
@@ -35,7 +34,7 @@ export async function prepareLesson(input: {
       durationSeconds: input.durationSeconds,
       output,
       latencyMs: Date.now() - startedAtMs,
-      preparedBy: `Gemini / ${LESSON_PLANNER_CONFIG.geminiModel}`,
+      preparedBy: "TokenPay / deepseek-v3.2",
     });
     return {
       ok: true,
@@ -46,7 +45,7 @@ export async function prepareLesson(input: {
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Gemini could not prepare this topic.",
+      message: error instanceof Error ? error.message : "TokenPay 暂时无法生成课程。",
       plannerAttemptsUsed: 1,
     };
   }
