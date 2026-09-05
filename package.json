@@ -1,0 +1,43 @@
+{
+  "name": "live-classroom",
+  "version": "0.1.0",
+  "description": "A live TV channel where a cartoon teacher explains any topic: lessons are planned by an LLM and rendered just-in-time as five-second MiniMax H3 Max clips inside a 3D classroom.",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "dev:proxy": "node --use-env-proxy node_modules/next/dist/bin/next dev",
+    "build": "next build",
+    "start": "next start",
+    "start:proxy": "node --use-env-proxy node_modules/next/dist/bin/next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "soundtrack": "node scripts/generate-soundtrack.mjs",
+    "verify": "node scripts/verify-classroom.mjs"
+  },
+  "dependencies": {
+    "@fal-ai/client": "^1.10.1",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/postprocessing": "^3.1.1",
+    "next": "^16.3.3",
+    "postprocessing": "6.39.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3"
+  }
+}

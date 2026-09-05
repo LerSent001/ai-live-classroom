@@ -1,0 +1,15 @@
+.next/
+node_modules/
+.env*
+!.env.example
+npm-debug.log*
+*.tsbuildinfo
+
+# Archived lesson clips (large media)
+recordings/
+
+.DS_Store
+output/
+*.log
+*.pem
+*.key
