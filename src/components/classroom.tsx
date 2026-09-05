@@ -141,7 +141,7 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
       <div className="experience-notices">
         {snapshot?.fixture && (
           <div className="notice notice-fixture" role="status">
-            Verification fixture: local media only. fal cannot be called in this mode.
+            Verification fixture: local media only. TokenPay cannot be called in this mode.
           </div>
         )}
         {classroom.connectionError && (

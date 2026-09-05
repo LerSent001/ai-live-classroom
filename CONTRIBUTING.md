@@ -1,14 +1,6 @@
 # Contributing
 
-Before opening a pull request, make sure all four gates pass locally:
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-```
-
-CI runs the same four commands. Keep changes to the prompts in `src/lib/classroom-config.ts`
-verifiable: run `node --experimental-strip-types scripts/probe-h3-expansion.mjs` (one paid clip)
-and paste the "survived" line in the PR description.
+Run `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` and `npm run verify`.
+Verification uses blank provider keys and must not spend credits. Never run paid generation as an automatic test.
+Video creation and polling must use the fixed TokenDance gateway; do not add provider fallbacks or automatic POST retries.
+Use injected fetch responses to test provider failures, task IDs, polling and recovery actions.

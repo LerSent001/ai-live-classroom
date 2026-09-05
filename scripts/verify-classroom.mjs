@@ -1,4 +1,4 @@
-// No-spend smoke test against a real production build: boots `next start` with a blank FAL_KEY and
+// No-spend smoke test against a real production build: boots `next start` with a blank TOKENDANCE_API_KEY and
 // proves the app serves, creates sessions, and refuses to admit any paid work without a key.
 // Run `npm run build` first; then `npm run verify`.
 import { spawn } from "node:child_process";
@@ -32,7 +32,7 @@ const server = spawn(
   ["run", "start", "--", "-H", "127.0.0.1", "-p", String(port)],
   {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), FAL_KEY: "", GEMINI_API_KEY: "", SAVE_RECORDINGS: "0" },
+    env: { ...process.env, PORT: String(port), TOKENDANCE_API_KEY: "", GEMINI_API_KEY: "", SAVE_RECORDINGS: "0" },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   },

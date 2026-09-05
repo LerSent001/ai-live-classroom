@@ -320,7 +320,7 @@ export function parsePlan(value: unknown): ValidatedScenePlan {
 function parseRenderTimings(value: unknown) {
   const record = recordOf(value, "render timings");
   return {
-    requestId: nonEmptyStringOf(record.requestId, "fal request id"),
+    requestId: nonEmptyStringOf(record.requestId, "video request id"),
     queueWaitMs: nullableNumberOf(record.queueWaitMs, "queue wait"),
     inferenceMs: nullableNumberOf(record.inferenceMs, "inference time"),
     totalMs: numberOf(record.totalMs, "provider total"),

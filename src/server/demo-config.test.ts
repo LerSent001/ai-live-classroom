@@ -3,10 +3,10 @@ import test from "node:test";
 import { demoPricingAvailable, H3_MAX_CONFIG, h3InputForPrompt, quoteForDuration } from "@/lib/classroom-config";
 import { parseClassroomCommand } from "@/lib/classroom-boundaries";
 
-test("scoped H3 request uses the supported endpoint schema and 768p launch rate", () => {
-  assert.equal(H3_MAX_CONFIG.endpoint, "minimax/h3-max-turbo/image-to-video");
+test("TokenPay H3 request uses the gateway schema and retains the local review deadline", () => {
+  assert.equal(H3_MAX_CONFIG.endpoint, "https://tokendance.space/gateway/minimax/v2/video_generation");
   assert.deepEqual(h3InputForPrompt("A test scene"), {
-    prompt: "A test scene", duration: 5, resolution: "768P", seed: 314159, prompt_expansion_mode: "balanced",
+    model: "minimax-h3-max", duration: 5, resolution: "768P", ratio: "16:9", content: [{ type: "text", text: "A test scene" }],
   });
   assert.equal(quoteForDuration(30).expectedCents + 2 * quoteForDuration(10).expectedCents, 50);
   assert.equal(demoPricingAvailable(Date.parse("2026-09-06T23:59:59Z")), true);

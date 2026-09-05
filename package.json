@@ -20,7 +20,6 @@
     "verify": "node scripts/verify-classroom.mjs"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.10.1",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "@react-three/postprocessing": "^3.1.1",

@@ -297,7 +297,7 @@ export class ClassroomRuntime {
       return { kind: "snapshot", snapshot: this.snapshot(session) };
     }
     if (!this.dependencies.configured()) {
-      session.warning = "FAL_KEY and GEMINI_API_KEY are required. Add both to .env.local and restart the app.";
+      session.warning = "TOKENDANCE_API_KEY and GEMINI_API_KEY are required. Add both to .env.local and restart the app.";
       this.log(session, "error", session.warning, atMs);
       this.touch(session);
       return { kind: "snapshot", snapshot: this.snapshot(session) };

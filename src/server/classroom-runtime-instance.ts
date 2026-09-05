@@ -1,14 +1,13 @@
 import "server-only";
 
-import { CLASSROOM_CONFIG, DEMO_CONFIG, H3_MAX_CONFIG, demoPricingAvailable, h3InputForPrompt, quoteForDuration } from "@/lib/classroom-config";
+import { DEMO_CONFIG, H3_MAX_CONFIG, demoPricingAvailable, h3InputForPrompt } from "@/lib/classroom-config";
 import { ClassroomRuntime } from "@/server/classroom-runtime";
 import { ClassroomPlaylistRuntime } from "@/server/classroom-playlist-runtime";
 import { createRecordingStore } from "@/server/archive";
-import { generateH3MaxClip } from "@/server/fal";
-import { classifyFalError } from "@/server/fal-error";
+import { generateTokenPayVideo } from "@/server/tokenpay-video";
 import { compileLessonScene, prepareLesson } from "@/server/lesson-producer";
 
-function envKey(name: "FAL_KEY" | "GEMINI_API_KEY"): string | null {
+function envKey(name: "TOKENDANCE_API_KEY" | "GEMINI_API_KEY"): string | null {
   const key = process.env[name]?.trim();
   return key ? key : null;
 }
@@ -16,19 +15,19 @@ function envKey(name: "FAL_KEY" | "GEMINI_API_KEY"): string | null {
 function createRuntime(): ClassroomPlaylistRuntime {
   const recordings = createRecordingStore();
   const worker = new ClassroomRuntime({
-    configured: () => envKey("FAL_KEY") !== null && envKey("GEMINI_API_KEY") !== null,
+    configured: () => envKey("TOKENDANCE_API_KEY") !== null && envKey("GEMINI_API_KEY") !== null,
     fixture: () => false,
     prepare: async ({ sessionId, topic, durationSeconds, teacherId }) => {
       const key = envKey("GEMINI_API_KEY");
-      if (!key || !envKey("FAL_KEY")) {
-        return { ok: false, message: "FAL_KEY and GEMINI_API_KEY are required.", plannerAttemptsUsed: 1 };
+      if (!key || !envKey("TOKENDANCE_API_KEY")) {
+        return { ok: false, message: "TOKENDANCE_API_KEY and GEMINI_API_KEY are required.", plannerAttemptsUsed: 1 };
       }
       if (!demoPricingAvailable()) {
-        return { ok: false, message: "The demo discount has ended. Review the video price before starting.", plannerAttemptsUsed: 1 };
+        return { ok: false, message: "The local pricing review deadline has passed. Review the video price before starting.", plannerAttemptsUsed: 1 };
       }
       recordings?.record(sessionId, "lesson-request", {
         topic, durationSeconds, teacherId, demo: DEMO_CONFIG,
-        estimatedFalCostCents: quoteForDuration(durationSeconds).expectedCents,
+        estimatedVideoCostCents: null,
         actualBilledCost: null,
       });
       const result = await prepareLesson({
@@ -43,16 +42,16 @@ function createRuntime(): ClassroomPlaylistRuntime {
     },
     compile: compileLessonScene,
     render: async ({ sessionId, plan }) => {
-      const key = envKey("FAL_KEY");
+      const key = envKey("TOKENDANCE_API_KEY");
       if (!key) {
         return {
           ok: false,
           reason: "render-failed",
-          message: "FAL_KEY is missing. Add it to .env.local and restart the app.",
+          message: "TOKENDANCE_API_KEY is missing. Add it to .env.local and restart the app.",
         };
       }
       if (!demoPricingAvailable()) {
-        return { ok: false, reason: "render-failed", message: "The demo discount has ended. No further clips were submitted." };
+        return { ok: false, reason: "render-failed", message: "The local pricing review deadline has passed. No further clips were submitted." };
       }
       let generated;
       let requestId: string | null = null;
@@ -60,17 +59,17 @@ function createRuntime(): ClassroomPlaylistRuntime {
         recordings?.record(sessionId, "video-request", {
           sceneNumber: plan.sceneNumber, endpoint: H3_MAX_CONFIG.endpoint,
           input: h3InputForPrompt(plan.prompt), plan,
-          estimatedFalCostCents: CLASSROOM_CONFIG.videoAttemptCostCents, actualBilledCost: null,
+          estimatedVideoCostCents: null, actualBilledCost: null,
         });
-        generated = await generateH3MaxClip({
-          prompt: plan.prompt, falKey: key,
+        generated = await generateTokenPayVideo({
+          prompt: plan.prompt, apiKey: key,
           onSubmitted: (id) => {
             requestId = id;
             recordings?.afterRequest(() => recordings.record(sessionId, "video-submitted", { sceneNumber: plan.sceneNumber, requestId: id }));
           },
         });
       } catch (error) {
-        const message = classifyFalError(error).message;
+        const message = error instanceof Error ? error.message : "TokenPay 视频生成失败。";
         recordings?.afterRequest(() => recordings.record(sessionId, "video-failed", {
           sceneNumber: plan.sceneNumber, requestId, message, actualBilledCost: null,
         }));
@@ -113,10 +112,10 @@ function createRuntime(): ClassroomPlaylistRuntime {
 }
 
 declare global {
-  var classroomRuntimeV7: ClassroomPlaylistRuntime | undefined;
+  var classroomRuntimeTokenPayV1: ClassroomPlaylistRuntime | undefined;
 }
 
 export function getClassroomRuntime(): ClassroomPlaylistRuntime {
-  globalThis.classroomRuntimeV7 ??= createRuntime();
-  return globalThis.classroomRuntimeV7;
+  globalThis.classroomRuntimeTokenPayV1 ??= createRuntime();
+  return globalThis.classroomRuntimeTokenPayV1;
 }

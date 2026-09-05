@@ -95,7 +95,7 @@ export const DEMO_CONFIG = {
   initialDurationSeconds: 30,
   followupDurationSeconds: 10,
   maxFollowups: 2,
-  // Stop before September 7 begins in UTC; the advertised discount ends that day.
+  // Conservative local review deadline retained during the gateway migration; not a provider quote.
   pricingValidBefore: "2026-09-07T00:00:00Z",
 } as const;
 
@@ -119,9 +119,9 @@ export const CLASSROOM_CONFIG = {
   maxLessonScenes: 6,
   maxQueuedLessons: 1,
   maxPlannerAttempts: 1,
-  // This ledger only tracks fal: Gemini planning is billed separately.
+  // Legacy local admission counters, not a TokenDance price or actual bill. Gemini is separate.
   planningAttemptCostCents: 0,
-  // 768p launch rate: $0.01/second, or five cents per five-second clip.
+  // Retained scheduling weight; TokenDance prices have not been reconciled yet.
   videoAttemptCostCents: 5,
   localCeilingCents: 98,
   maxLogEntries: 160,
@@ -169,22 +169,20 @@ export function quoteForDuration(durationSeconds: LessonDurationSeconds): Lesson
 }
 
 export const H3_MAX_CONFIG = {
-  endpoint: "minimax/h3-max-turbo/image-to-video",
+  endpoint: "https://tokendance.space/gateway/minimax/v2/video_generation",
+  model: "minimax-h3-max",
   duration: CLASSROOM_CONFIG.clipDurationSeconds,
   resolution: "768P",
-  seed: 314_159,
-  promptExpansionMode: "balanced",
+  appUrl: "https://github.com/LerSent001/ai-live-classroom",
 } as const;
 
 export function h3InputForPrompt(prompt: string) {
-  // This endpoint accepts no aspect_ratio field. Without image_url, its documented
-  // text-only mode uses 16:9 and stays on the endpoint permitted by the scoped key.
   return {
-    prompt,
+    model: H3_MAX_CONFIG.model,
     duration: H3_MAX_CONFIG.duration,
     resolution: H3_MAX_CONFIG.resolution,
-    seed: H3_MAX_CONFIG.seed,
-    prompt_expansion_mode: H3_MAX_CONFIG.promptExpansionMode,
+    ratio: "16:9",
+    content: [{ type: "text", text: prompt }],
   };
 }
 
