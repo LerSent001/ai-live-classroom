@@ -1,7 +1,7 @@
 import { isRecord, toLessonStepId, toPrompt } from "@/lib/classroom-boundaries";
-import { compileH3ScenePrompt, containsChinese, sceneCountForDuration } from "@/lib/classroom-config";
+import { CLASSROOM_CONFIG, compileH3ScenePrompt, containsChinese } from "@/lib/classroom-config";
 import { isValidTopic } from "@/lib/lesson-language";
-import type { LessonDurationSeconds, LessonLedger, LessonPlan, LessonStep, Prompt, ScenePurpose, TeacherId, ValidatedScenePlan } from "@/lib/classroom-types";
+import type { BranchLessonContext, CourseRole, LessonLedger, LessonPlan, LessonStep, Prompt, ScenePurpose, TeacherId, ValidatedScenePlan } from "@/lib/classroom-types";
 import { plannerProgressionRole } from "@/server/progression-role";
 
 function requiredString(record: Record<string, unknown>, field: string): string {
@@ -99,23 +99,36 @@ function suggestedTopicsOf(
 export function parseInitialLesson(input: {
   teacherId: TeacherId;
   topic: string;
-  durationSeconds: LessonDurationSeconds;
+  courseRole: CourseRole;
+  parentContext: BranchLessonContext | null;
   output: string;
   latencyMs: number;
   preparedBy: string;
 }): LessonPlan {
   const record = jsonObject(input.output);
-  const targetSceneCount = sceneCountForDuration(input.durationSeconds);
+  const minimum = input.courseRole === "main"
+    ? CLASSROOM_CONFIG.minMainLessonScenes
+    : CLASSROOM_CONFIG.minBranchLessonScenes;
+  const maximum = input.courseRole === "main"
+    ? CLASSROOM_CONFIG.maxMainLessonScenes
+    : CLASSROOM_CONFIG.maxBranchLessonScenes;
+  const recommendedSceneCount = record.recommendedSceneCount;
+  if (typeof recommendedSceneCount !== "number" || !Number.isInteger(recommendedSceneCount) || recommendedSceneCount < minimum || recommendedSceneCount > maximum) {
+    throw new Error(`The lesson planner must choose between ${minimum} and ${maximum} scenes`);
+  }
+  const targetSceneCount = recommendedSceneCount;
   const steps = parseSteps({ record, count: targetSceneCount });
   const title = requiredString(record, "title");
   const bigQuestion = requiredString(record, "bigQuestion");
   return {
+    courseRole: input.courseRole,
+    parentContext: input.parentContext,
     topic: input.topic,
     // Identity belongs to the accepted request, never to model-generated JSON.
     teacherId: input.teacherId,
     title,
     bigQuestion,
-    durationSeconds: input.durationSeconds,
+    durationSeconds: targetSceneCount * CLASSROOM_CONFIG.clipDurationSeconds,
     targetSceneCount,
     steps,
     preparedBy: input.preparedBy,

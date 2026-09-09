@@ -6,16 +6,17 @@ import type { LessonDurationSeconds, LessonLedger, TeacherId, ValidatedScenePlan
 import { compileLessonScene, parseInitialLesson } from "@/server/lesson-plan";
 import { ClassroomRuntime } from "@/server/classroom-runtime";
 
-const start = { kind: "start", id: "teacher-start", topic: "讲讲重力的原理", durationSeconds: 30, atMs: 1 };
+const start = { kind: "start", id: "teacher-start", topic: "讲讲重力的原理", atMs: 1 };
 
 function plannedLesson(teacherId: TeacherId, durationSeconds: LessonDurationSeconds = 30) {
   const name = TEACHERS[teacherId].name;
   return parseInitialLesson({
-    teacherId, topic: start.topic, durationSeconds, latencyMs: 1, preparedBy: "local fixture",
+    teacherId, topic: start.topic, courseRole: "main", parentContext: null, latencyMs: 1, preparedBy: "local fixture",
     output: JSON.stringify({
       // A model cannot overwrite the identity accepted by the API.
       teacherId: teacherId === "monokuma" ? "monomi" : "monokuma",
       title: "重力", bigQuestion: "物体为什么会落下？", suggestedTopics: ["月球的轨道", "太空中的失重", "物体的支撑力"],
+      recommendedSceneCount: sceneCountForDuration(durationSeconds),
       steps: Array.from({ length: sceneCountForDuration(durationSeconds) }, () => ({
         role: "mechanism", narration: "松开手，小球就会落向地面。", concept: "地球引力",
         visualAction: `${name} releases a ball beside a force diagram.`,
@@ -47,7 +48,7 @@ test("each teacher reaches both the Chinese planner and every compiled H3 beat",
   for (const teacherId of ["monokuma", "monomi"] as const) {
     const name = TEACHERS[teacherId].name;
     const otherName = TEACHERS[teacherId === "monokuma" ? "monomi" : "monokuma"].name;
-    const planner = preparationPrompt(start.topic, 6, teacherId);
+    const planner = preparationPrompt(start.topic, teacherId, "main", null);
     assert.ok(planner.includes(`named ${name}`));
     assert.ok(!planner.includes(otherName));
     assert.match(planner, /Simplified Chinese/);
@@ -79,7 +80,7 @@ test("simultaneous classrooms keep distinct teachers through preparation, snapsh
   const rendered: Array<{ sessionId: string; plan: ValidatedScenePlan }> = [];
   const runtime = new ClassroomRuntime({
     configured: () => true, fixture: () => true,
-    prepare: async ({ teacherId, durationSeconds }) => ({ ok: true, lesson: plannedLesson(teacherId, durationSeconds), ledger: ledger(), plannerAttemptsUsed: 1 }),
+    prepare: async ({ teacherId }) => ({ ok: true, lesson: plannedLesson(teacherId), ledger: ledger(), plannerAttemptsUsed: 1 }),
     compile: compileLessonScene,
     render: async ({ sessionId, plan }) => {
       rendered.push({ sessionId, plan });

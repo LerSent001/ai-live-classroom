@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lessonIsBusy } from "@/lib/classroom-status";
 import { CLASSROOM_CONFIG, CLASSROOM_POLICY, DEFAULT_TEACHER_ID } from "@/lib/classroom-config";
 import { toEffectId, toSceneId } from "@/lib/classroom-boundaries";
+import { courseDocumentFromSnapshots } from "@/lib/course-document";
 import type { RecordedLesson } from "@/lib/saved-classroom";
 
 import type {
@@ -12,7 +13,8 @@ import type {
   CommandId,
   CommandOutcome,
   EffectId,
-  LessonDurationSeconds,
+  BranchLessonContext,
+  CourseRole,
   LessonLedger,
   LessonPlan,
   LogEntry,
@@ -63,7 +65,8 @@ export type ClassroomRuntimeDependencies = Readonly<{
     teacherId: TeacherId;
     sessionId: ClassroomSessionId;
     topic: string;
-    durationSeconds: LessonDurationSeconds;
+    courseRole: CourseRole;
+    parentContext: BranchLessonContext | null;
   }): Promise<PreparationResult>;
   compile(input: {
     lesson: LessonPlan;
@@ -253,7 +256,14 @@ export class ClassroomRuntime {
     let outcome: CommandOutcome;
     switch (command.kind) {
       case "start":
-        outcome = this.start(session, command.topic, command.durationSeconds, command.teacherId, command.atMs);
+        outcome = this.start(
+          session,
+          command.topic,
+          command.teacherId,
+          command.courseRole,
+          command.parentContext,
+          command.atMs,
+        );
         break;
       case "queue-lesson":
         outcome = { kind: "snapshot", snapshot: this.snapshot(session) };
@@ -287,8 +297,9 @@ export class ClassroomRuntime {
   private start(
     session: InternalSession,
     topic: string,
-    durationSeconds: LessonDurationSeconds,
     teacherId: TeacherId,
+    courseRole: CourseRole,
+    parentContext: BranchLessonContext | null,
     atMs: number,
   ): CommandOutcome {
     if (session.production.kind !== "idle") {
@@ -313,12 +324,12 @@ export class ClassroomRuntime {
     this.log(
       session,
       "info",
-      `Preparing a ${durationSeconds}-second lesson about “${topic}”.`,
+      `Planning an adaptive ${courseRole === "main" ? "course" : "question branch"} about “${topic}”.`,
       atMs,
     );
     this.touch(session);
     const epoch = session.epoch;
-    void this.prepare(session.id, epoch, topic, durationSeconds, teacherId);
+    void this.prepare(session.id, epoch, topic, teacherId, courseRole, parentContext);
     return { kind: "snapshot", snapshot: this.snapshot(session) };
   }
 
@@ -401,14 +412,31 @@ export class ClassroomRuntime {
     sessionId: ClassroomSessionId,
     epoch: number,
     topic: string,
-    durationSeconds: LessonDurationSeconds,
     teacherId: TeacherId,
+    courseRole: CourseRole,
+    parentContext: BranchLessonContext | null,
   ): Promise<void> {
     let result: PreparationResult;
     try {
-      result = await this.dependencies.prepare({ sessionId, topic, durationSeconds, teacherId });
+      result = await this.dependencies.prepare({
+        sessionId,
+        topic,
+        teacherId,
+        courseRole,
+        parentContext,
+      });
       if (result.ok && result.lesson.teacherId !== teacherId) {
         throw new Error("The prepared lesson changed the selected teacher.");
+      }
+      if (result.ok && result.lesson.courseRole !== courseRole) {
+        throw new Error("The prepared lesson changed the requested course role.");
+      }
+      if (
+        result.ok &&
+        (result.lesson.parentContext?.parentSessionId ?? null) !==
+          (parentContext?.parentSessionId ?? null)
+      ) {
+        throw new Error("The prepared lesson changed its parent course context.");
       }
     } catch (error) {
       result = {
@@ -681,7 +709,7 @@ export class ClassroomRuntime {
     const nextScene = ordered.find(
       (scene) => scene.kind === "generating" || scene.kind === "ready",
     );
-    return {
+    const base: ClassroomSnapshot = {
       id: session.id,
       teacherId: session.teacherId,
       version: session.version,
@@ -691,6 +719,27 @@ export class ClassroomRuntime {
       phase: phaseFor(session),
       topic: session.topic,
       lesson: session.lesson,
+      courseDocument: {
+        id: `course-document:${session.id}`,
+        title: session.lesson?.title ?? session.topic ?? "Untitled course",
+        subject: session.topic ?? "Untitled course",
+        teacherId: session.teacherId,
+        main: null,
+        appendices: [],
+        activeSectionId: null,
+        exportReady: false,
+      },
+      playbackContext: {
+        kind: session.lesson?.courseRole ?? "main",
+        sessionId: session.id,
+        returnTo: session.lesson?.parentContext
+          ? {
+              sessionId: session.lesson.parentContext.parentSessionId,
+              sceneId: session.lesson.parentContext.resumeSceneId,
+              stepId: session.lesson.parentContext.resumeStepId,
+            }
+          : null,
+      },
       production: session.production,
       playback: session.playback,
       hasPlaybackBegun: session.hasPlaybackBegun,
@@ -730,6 +779,14 @@ export class ClassroomRuntime {
             : {}),
         } as ClassroomSnapshot["playlist"][number],
       ],
+    };
+    return {
+      ...base,
+      courseDocument: courseDocumentFromSnapshots({
+        id: session.id,
+        snapshots: [base],
+        activeSessionId: session.id,
+      }),
     };
   }
 }

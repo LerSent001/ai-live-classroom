@@ -24,13 +24,18 @@
     "@react-three/fiber": "^9.7.0",
     "@react-three/postprocessing": "^3.1.1",
     "next": "^16.3.3",
+    "@fontsource/noto-sans-sc": "^5.3.0",
+    "pdfkit": "^0.20.2",
+    "jszip": "^3.10.2",
     "postprocessing": "6.39.4",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "eslint": "^9.39.5",

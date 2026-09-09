@@ -15,7 +15,6 @@ import type {
   ClientPlaybackSegment,
   CommandId,
   CommandOutcome,
-  LessonDurationSeconds,
   PlaybackReport,
   PlayableSegment,
   TeacherId,
@@ -158,9 +157,14 @@ export function useClassroom() {
   const start = useCallback(async (input: {
     teacherId: TeacherId;
     topic: string;
-    durationSeconds: LessonDurationSeconds;
   }) => {
-    await send({ kind: "start", ...input, atMs: Date.now() });
+    await send({
+      kind: "start",
+      ...input,
+      courseRole: "main",
+      parentContext: null,
+      atMs: Date.now(),
+    });
   }, [send]);
 
   const stop = useCallback(async () => {
@@ -206,9 +210,12 @@ export function useClassroom() {
     }
   }, [replaceSession, reportConnectionError, sessionExpired, sessionId]);
 
-  const nominalRunway = snapshot?.hasPlaybackBegun
-    ? 0
-    : snapshot?.policy.startupRunwayScenes ?? CLASSROOM_CONFIG.startupRunwayScenes;
+  const nominalRunway = snapshot?.playback.kind === "priming"
+    ? Math.min(
+        snapshot.policy.startupRunwayScenes,
+        snapshot.lesson?.targetSceneCount ?? snapshot.policy.startupRunwayScenes,
+      )
+    : 0;
   const remainingPositions = snapshot?.scenes.filter(
     (scene) => scene.kind === "generating" || scene.kind === "ready",
   ).length ?? nominalRunway;
@@ -226,6 +233,8 @@ export function useClassroom() {
     providerReadyScenes: clientReady.length,
     playback: {
       epoch: snapshot?.epoch ?? 0,
+      contextId: snapshot?.playbackContext.sessionId ?? sessionId,
+      contextKind: snapshot?.playbackContext.kind ?? "main",
       running: !sessionExpired && snapshot !== null && snapshot.production.kind !== "idle" && snapshot.production.kind !== "closed",
       status: snapshot?.playback.kind ?? "idle",
       playing,
@@ -243,7 +252,8 @@ export function useClassroom() {
         !sessionExpired &&
         snapshot?.lesson != null &&
         !lessonHasFailed(snapshot) &&
-        snapshot.playlist.length - 1 < DEMO_CONFIG.maxFollowups &&
+        snapshot.playbackContext.kind === "main" &&
+        snapshot.playlist.length - 1 < DEMO_CONFIG.maxBranches &&
         queuedLessonCount < CLASSROOM_CONFIG.maxQueuedLessons,
       canStop: !sessionExpired && (snapshot?.production.kind === "preparing" || snapshot?.production.kind === "teaching"),
       canClear: sessionExpired || (snapshot !== null && !lessonIsBusy(snapshot) && snapshot.metrics.activeVideoJobs === 0),

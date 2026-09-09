@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { wallets } from "@/server/tokenpay-wallet";
 
-import { DEMO_CONFIG, H3_MAX_CONFIG, demoPricingAvailable, h3InputForPrompt } from "@/lib/classroom-config";
+import { DEMO_CONFIG, H3_MAX_CONFIG, h3InputForPrompt } from "@/lib/classroom-config";
 import { ClassroomRuntime } from "@/server/classroom-runtime";
 import { ClassroomPlaylistRuntime } from "@/server/classroom-playlist-runtime";
 import { createRecordingStore } from "@/server/archive";
@@ -15,22 +15,19 @@ function createRuntime(owner: string, credentialId: string): ClassroomPlaylistRu
   const worker = new ClassroomRuntime({
     configured: () => wallets.get(owner) !== null && fingerprint(wallets.get(owner)) === credentialId,
     fixture: () => false,
-    prepare: async ({ sessionId, topic, durationSeconds, teacherId }) => {
+    prepare: async ({ sessionId, topic, teacherId, courseRole, parentContext }) => {
       const key = wallets.get(owner);
       if (!key || fingerprint(key) !== credentialId) {
         return { ok: false, message: "请先连接自己的 TokenPay 钱包。", plannerAttemptsUsed: 1 };
       }
-      if (!demoPricingAvailable()) {
-        return { ok: false, message: "The local pricing review deadline has passed. Review the video price before starting.", plannerAttemptsUsed: 1 };
-      }
       recordings?.record(sessionId, "lesson-request", {
-        topic, durationSeconds, teacherId, demo: DEMO_CONFIG,
+        topic, teacherId, courseRole, parentContext, demo: DEMO_CONFIG,
         estimatedVideoCostCents: null,
         actualBilledCost: null,
       });
       sessionKeys.set(sessionId, key);
       const result = await prepareLesson({
-        topic, durationSeconds, teacherId, tokenpayKey: key,
+        topic, teacherId, courseRole, parentContext, tokenpayKey: key,
         record: recordings ? (kind, data) => {
           if (kind === "planner-request") recordings.record(sessionId, kind, data);
           else recordings.afterRequest(() => recordings.record(sessionId, kind, data));
@@ -48,9 +45,6 @@ function createRuntime(owner: string, credentialId: string): ClassroomPlaylistRu
           reason: "render-failed",
           message: "钱包已断开或切换，请重新开始课程。",
         };
-      }
-      if (!demoPricingAvailable()) {
-        return { ok: false, reason: "render-failed", message: "The local pricing review deadline has passed. No further clips were submitted." };
       }
       let generated;
       let requestId: string | null = null;

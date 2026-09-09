@@ -42,6 +42,8 @@ type PendingActivation = Readonly<{
 
 export type LessonPlaybackIntent = Readonly<{
   epoch: number;
+  contextId: string;
+  contextKind: "main" | "branch";
   running: boolean;
   status: "idle" | "priming" | "playing" | "buffering" | "ended";
   playing: ClientPlaybackSegment | null;
@@ -71,6 +73,10 @@ type LessonDeckProps = Readonly<{
 
 function enoughData(video: HTMLVideoElement): boolean {
   return video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+}
+
+function seekVideo(video: HTMLVideoElement, seconds: number): void {
+  video.currentTime = seconds;
 }
 
 function TelevisionStatic() {
@@ -210,6 +216,8 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
   const tokenRef = useRef(0);
   const skipTimerRef = useRef<number | null>(null);
   const previousEpochRef = useRef(intent.epoch);
+  const previousContextRef = useRef(intent.contextId);
+  const bookmarksRef = useRef(new Map<SceneId, number>());
   const waitingHandoffRef = useRef<WaitingHandoff | null>(null);
   const pendingActivationRef = useRef<PendingActivation | null>(null);
   const pendingGestureRef = useRef<Readonly<{ segment: GeneratedClientSegment; slot: Slot; activation: Activation }> | null>(null);
@@ -340,6 +348,14 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     pendingActivationRef.current = null;
     waitingHandoffRef.current = null;
     try {
+      const bookmark = bookmarksRef.current.get(segment.id);
+      if (bookmark !== undefined && Number.isFinite(bookmark)) {
+        seekVideo(video, Math.max(
+          0,
+          Math.min(bookmark, Math.max(0, segment.durationSeconds - 0.05)),
+        ));
+        bookmarksRef.current.delete(segment.id);
+      }
       await video.play();
       if (assignmentsRef.current[slot]?.token !== assignment.token) {
         video.pause();
@@ -425,7 +441,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
         return;
       }
     }
-    const first = current.ready[0];
+    const first = current.playing ?? current.ready[0];
     if (!first) return;
     const activation: Activation = { kind: "started" };
     if (first.kind === "skipped") activateSkipped(first, activation);
@@ -459,6 +475,30 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
       setGestureRequired(false);
       setCaption(null);
       setMediaError(null);
+      return;
+    }
+    if (previousContextRef.current !== intent.contextId) {
+      previousContextRef.current = intent.contextId;
+      if (skipTimerRef.current !== null) window.clearTimeout(skipTimerRef.current);
+      const active = activeRef.current;
+      if (active?.slot !== null && active?.slot !== undefined) {
+        const video = videoRefs.current[active.slot];
+        if (video) {
+          bookmarksRef.current.set(active.segment.id, video.currentTime);
+          video.pause();
+        }
+      }
+      activeRef.current = null;
+      waitingHandoffRef.current = null;
+      pendingActivationRef.current = null;
+      pendingGestureRef.current = null;
+      setVisibleSlot(null);
+      setSkipped(null);
+      setCaption(null);
+      setBuffering(true);
+      setGestureRequired(false);
+      setMediaError(null);
+      setReconcileNonce((value) => value + 1);
       return;
     }
     reconcile();

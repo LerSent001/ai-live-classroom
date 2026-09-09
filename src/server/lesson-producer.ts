@@ -1,12 +1,12 @@
 import "server-only";
 
 import {
-  sceneCountForDuration,
   preparationPrompt,
   PLANNER_SYSTEM_PROMPT,
 } from "@/lib/classroom-config";
 import type {
-  LessonDurationSeconds,
+  BranchLessonContext,
+  CourseRole,
   PreparationResult,
   TeacherId,
 } from "@/lib/classroom-types";
@@ -16,7 +16,8 @@ import { parseInitialLesson } from "@/server/lesson-plan";
 export async function prepareLesson(input: {
   teacherId: TeacherId;
   topic: string;
-  durationSeconds: LessonDurationSeconds;
+  courseRole: CourseRole;
+  parentContext: BranchLessonContext | null;
   tokenpayKey: string;
   record?: PlannerRecorder;
 }): Promise<PreparationResult> {
@@ -25,13 +26,14 @@ export async function prepareLesson(input: {
     const output = await requestTokenPayPlan({
       apiKey: input.tokenpayKey,
       record: input.record,
-      prompt: preparationPrompt(input.topic, sceneCountForDuration(input.durationSeconds), input.teacherId),
+      prompt: preparationPrompt(input.topic, input.teacherId, input.courseRole, input.parentContext),
       systemPrompt: PLANNER_SYSTEM_PROMPT,
     });
     const lesson = parseInitialLesson({
       teacherId: input.teacherId,
       topic: input.topic,
-      durationSeconds: input.durationSeconds,
+      courseRole: input.courseRole,
+      parentContext: input.parentContext,
       output,
       latencyMs: Date.now() - startedAtMs,
       preparedBy: "TokenPay / deepseek-v3.2",

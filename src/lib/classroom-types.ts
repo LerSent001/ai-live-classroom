@@ -6,9 +6,20 @@ export type EffectId = string & { readonly __brand: "EffectId" };
 export type Prompt = string & { readonly __brand: "Prompt" };
 
 export type SceneNumber = number;
-export type LessonDurationSeconds = 10 | 30;
-export type LessonSceneCount = 2 | 6;
+export type LessonDurationSeconds = number;
+export type LessonSceneCount = number;
 export type TeacherId = "monokuma" | "monomi";
+export type CourseRole = "main" | "branch";
+
+export type BranchLessonContext = Readonly<{
+  parentSessionId: ClassroomSessionId;
+  parentTitle: string;
+  parentBigQuestion: string;
+  resumeSceneId: SceneId | null;
+  resumeStepId: LessonStepId | null;
+  currentConcept: string | null;
+  completedConcepts: readonly string[];
+}>;
 
 export type CaptionCue = Readonly<{
   startSeconds: number;
@@ -42,6 +53,8 @@ export type LessonStep = Readonly<{
 }>;
 
 export type LessonPlan = Readonly<{
+  courseRole: CourseRole;
+  parentContext: BranchLessonContext | null;
   teacherId: TeacherId;
   topic: string;
   title: string;
@@ -58,6 +71,7 @@ type PlaylistLessonIdentity = Readonly<{
   sessionId: ClassroomSessionId;
   position: number;
   topic: string;
+  courseRole: CourseRole;
 }>;
 
 export type PlaylistLessonView = PlaylistLessonIdentity &
@@ -201,6 +215,61 @@ export type PlaybackState =
   | Readonly<{ kind: "buffering" }>
   | Readonly<{ kind: "ended"; finalSceneNumber: SceneNumber | null }>;
 
+export type PlaybackContext = Readonly<{
+  kind: CourseRole;
+  sessionId: ClassroomSessionId;
+  returnTo: Readonly<{
+    sessionId: ClassroomSessionId;
+    sceneId: SceneId | null;
+    stepId: LessonStepId | null;
+  }> | null;
+}>;
+
+export type CoursePageMedia = Readonly<{
+  sceneId: SceneId | null;
+  status: "pending" | "ready" | "failed";
+  videoUrl: string | null;
+}>;
+
+export type CoursePage = Readonly<{
+  id: string;
+  sectionId: string;
+  stepId: LessonStepId;
+  position: number;
+  role: ProgressionRole;
+  title: string;
+  teachingGoal: string;
+  narration: string;
+  concept: string;
+  summary: string;
+  visualAction: string;
+  startSeconds: number;
+  endSeconds: number;
+  media: CoursePageMedia;
+}>;
+
+export type CourseSection = Readonly<{
+  id: string;
+  sessionId: ClassroomSessionId;
+  kind: CourseRole;
+  topic: string;
+  title: string;
+  bigQuestion: string;
+  durationSeconds: number;
+  pages: readonly CoursePage[];
+}>;
+
+export type CourseDocument = Readonly<{
+  id: string;
+  title: string;
+  subject: string;
+  teacherId: TeacherId;
+  main: CourseSection | null;
+  appendices: readonly CourseSection[];
+  activeSectionId: string | null;
+  exportReady: boolean;
+}>;
+
 export type ClassroomPhase =
   | "idle"
   | "preparing"
@@ -232,7 +301,8 @@ export type ClassroomCommand =
       teacherId: TeacherId;
       id: CommandId;
       topic: string;
-      durationSeconds: LessonDurationSeconds;
+      courseRole: CourseRole;
+      parentContext: BranchLessonContext | null;
       atMs: number;
     }>
   | Readonly<{
@@ -248,7 +318,10 @@ export type CommandOutcome = Readonly<{ kind: "snapshot"; snapshot: ClassroomSna
 
 export type ClassroomPolicy = Readonly<{
   clipDurationSeconds: number;
-  durationOptionsSeconds: readonly LessonDurationSeconds[];
+  minMainLessonScenes: number;
+  maxMainLessonScenes: number;
+  minBranchLessonScenes: number;
+  maxBranchLessonScenes: number;
   startupRunwayScenes: number;
   steadyRunwayScenes: number;
   recoveryRunwayScenes: number;
@@ -295,6 +368,8 @@ export type ClassroomSnapshot = Readonly<{
   phase: ClassroomPhase;
   topic: string | null;
   lesson: LessonPlan | null;
+  courseDocument: CourseDocument;
+  playbackContext: PlaybackContext;
   production: ProductionState;
   playback: PlaybackState;
   hasPlaybackBegun: boolean;

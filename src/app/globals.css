@@ -608,8 +608,29 @@ html, body { overflow: hidden; background: #120e15; }
 .guide-aired ul { margin: 0; padding: 0; list-style: none; }
 .guide-aired li { padding: 5px 0; color: var(--panel-muted); font-size: 12px; line-height: 1.4; }
 .guide-add { display: grid; flex: none; gap: 12px; padding-top: 14px; border-top: 2px solid var(--pink); }
+.guide-add-note { margin: 0; color: var(--panel-muted); font-size: 11px; line-height: 1.45; }
 .guide-add input { font: inherit; font-size: 13px; }
 .guide-add input:disabled { opacity: .55; cursor: not-allowed; }
+.courseware-current { padding: 13px 14px; border-left: 4px solid var(--pink); background: rgba(12, 9, 15, .68); }
+.courseware-current-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.courseware-current-head > span { color: var(--pink); font-family: var(--mono); font-size: 10px; }
+.courseware-current > strong { color: var(--panel-ink); font-size: 17px; line-height: 1.25; }
+.courseware-current > p { margin: 0; color: var(--panel-muted); font-size: 12px; line-height: 1.55; }
+.courseware-pages { display: grid; margin: 0; padding: 0; list-style: none; }
+.courseware-pages li { display: flex; gap: 11px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--panel-line); opacity: .62; }
+.courseware-pages li > span { flex: none; color: var(--pink); font-family: var(--mono); font-size: 11px; }
+.courseware-pages li > div { min-width: 0; }
+.courseware-pages p { margin: 0; overflow-wrap: anywhere; color: var(--panel-ink); font-size: 13px; line-height: 1.35; }
+.courseware-pages small { color: var(--panel-muted); font-family: var(--mono); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.courseware-pages .courseware-page-active { opacity: 1; }
+.courseware-pages .courseware-page-active p { color: #ff83b9; }
+.courseware-appendices ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.courseware-appendices li { display: flex; gap: 10px; color: var(--panel-muted); font-size: 12px; line-height: 1.45; }
+.courseware-appendices li > span { color: var(--pink); font-family: var(--mono); }
+.courseware-downloads > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.courseware-downloads a { padding: 9px 11px; border: 1px solid var(--pink); color: var(--panel-ink); font-size: 12px; font-weight: 800; text-decoration: none; }
+.courseware-downloads a:hover { background: var(--pink); color: #120c15; }
+.courseware-downloads > small { color: var(--panel-muted); font-size: 10px; line-height: 1.45; }
 
 /* Broadcast graphics inside the CRT. */
 .tuning-screen { overflow: hidden; background: radial-gradient(circle, rgba(255,255,255,.13) 1px, transparent 1.5px) 0 0 / 8px 8px, #17121c; }

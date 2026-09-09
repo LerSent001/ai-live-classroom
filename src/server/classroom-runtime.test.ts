@@ -6,12 +6,11 @@ import {
   toLessonStepId,
   toPrompt,
 } from "@/lib/classroom-boundaries";
-import { CLASSROOM_CONFIG, TEACHERS, quoteForDuration, sceneCountForDuration } from "@/lib/classroom-config";
+import { CLASSROOM_CONFIG, TEACHERS, quoteForSceneCount } from "@/lib/classroom-config";
 import type { ClassroomRuntimeDependencies } from "@/server/classroom-runtime";
 import { ClassroomPlaylistRuntime } from "@/server/classroom-playlist-runtime";
 import { ClassroomRuntime } from "@/server/classroom-runtime";
 import type {
-  LessonDurationSeconds,
   LessonLedger,
   LessonPlan,
   TeacherId,
@@ -37,14 +36,15 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for classroom state");
 }
 
-function lesson(durationSeconds: LessonDurationSeconds = 30, teacherId: TeacherId = "monokuma"): LessonPlan {
-  const targetSceneCount = sceneCountForDuration(durationSeconds);
+function lesson(targetSceneCount = 6, teacherId: TeacherId = "monokuma"): LessonPlan {
   return {
     teacherId,
+    courseRole: "main",
+    parentContext: null,
     topic: "Why does the Moon have phases?",
     title: "Moon Shapes",
     bigQuestion: "Why does the Moon look different through the month?",
-    durationSeconds,
+    durationSeconds: targetSceneCount * CLASSROOM_CONFIG.clipDurationSeconds,
     targetSceneCount,
     steps: Array.from({ length: targetSceneCount }, (_, index) => ({
       id: toLessonStepId(`step-${index + 1}`),
@@ -112,11 +112,15 @@ function createHarness(input?: {
   const dependencies: ClassroomRuntimeDependencies = {
     configured: () => true,
     fixture: () => true,
-    prepare: async ({ topic, durationSeconds, teacherId }) => {
+    prepare: async ({ topic, teacherId, courseRole, parentContext }) => {
       prepareCalls.push(topic);
       return input?.preparation ?? {
         ok: true,
-        lesson: lesson(durationSeconds, teacherId),
+        lesson: {
+          ...lesson(courseRole === "main" ? 6 : 2, teacherId),
+          courseRole,
+          parentContext,
+        },
         ledger: initialLedger(),
         plannerAttemptsUsed: 1,
       };
@@ -156,13 +160,13 @@ function successfulRender(index: number): RenderResult {
   };
 }
 
-test("duration quotes cover the 30 + 10 + 10 second demo", () => {
-  assert.deepEqual(quoteForDuration(30), {
+test("adaptive scene-count quotes cover main and branch examples", () => {
+  assert.deepEqual(quoteForSceneCount(6), {
     sceneCount: 6,
     expectedCents: 30,
     protectedMaximumCents: 30,
   });
-  assert.deepEqual(quoteForDuration(10), {
+  assert.deepEqual(quoteForSceneCount(2), {
     sceneCount: 2,
     expectedCents: 10,
     protectedMaximumCents: 10,
@@ -187,7 +191,7 @@ test("a local compilation failure sends no request to H3", async () => {
     kind: "start", teacherId: "monokuma",
     id: toCommandId("command-start-invalid"),
     topic: "Why does the Moon have phases?",
-    durationSeconds: 30,
+    courseRole: "main", parentContext: null,
     atMs: 1,
   });
   await waitFor(() => harness.runtime.view(sessionId)?.production.kind === "draining");
@@ -203,7 +207,7 @@ test("render completions remain ordered even when the second finishes first", as
     kind: "start", teacherId: "monokuma",
     id: toCommandId("command-start-order"),
     topic: "Why does the Moon have phases?",
-    durationSeconds: 30,
+    courseRole: "main", parentContext: null,
     atMs: 1,
   });
   await waitFor(() => harness.renders.length === 2);
@@ -223,7 +227,7 @@ test("two H3 slots start immediately while two ready scenes unlock playback", as
     kind: "start", teacherId: "monokuma",
     id: toCommandId("command-fast-start"),
     topic: "How do humans see color?",
-    durationSeconds: 30,
+    courseRole: "main", parentContext: null,
     atMs: 1,
   });
 
@@ -251,71 +255,11 @@ test("two H3 slots start immediately while two ready scenes unlock playback", as
   assert.equal(harness.runtime.view(sessionId)?.metrics.activeVideoJobs, 2);
 });
 
-test("the complete selected demo makes exactly 6 + 2 + 2 renders and admits no third follow-up", async () => {
-  const harness = createHarness();
-  const playlist = new ClassroomPlaylistRuntime(harness.runtime);
-  const sessionId = toClassroomSessionId("classroom-complete-demo");
-  playlist.create({ sessionId });
-  playlist.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("demo-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
-  let totalRenders = 0;
-  for (const [lessonIndex, clipCount] of [6, 2, 2].entries()) {
-    if (lessonIndex > 0) {
-      const command = { kind: "queue-lesson" as const, id: toCommandId(`demo-choice-${lessonIndex}`), topic: `Explain related lunar idea ${lessonIndex}`, atMs: 2 };
-      playlist.command(sessionId, command);
-      playlist.command(sessionId, command); // A duplicate click must not add work.
-    }
-    for (let index = 0; index < clipCount; index += 1) {
-      await waitFor(() => harness.renders.length > totalRenders);
-      harness.renders[totalRenders]!.result.resolve(successfulRender(totalRenders + 1));
-      totalRenders += 1;
-      await waitFor(() => Boolean(playlist.view(sessionId)?.ready.length));
-      const scene = playlist.view(sessionId)!.ready[0]!;
-      playlist.command(sessionId, { kind: "report-playback", id: toCommandId(`demo-play-${totalRenders}`), report: { kind: "started", sceneId: scene.id, atMs: 3 } });
-      playlist.command(sessionId, { kind: "report-playback", id: toCommandId(`demo-end-${totalRenders}`), report: { kind: "drained", finishedSceneId: scene.id, atMs: 4 } });
-    }
-    await waitFor(() => playlist.view(sessionId)?.phase === "complete");
-    assert.equal(harness.renders.length, totalRenders);
-    assert.equal(harness.prepareCalls.length, lessonIndex + 1);
-    assert.equal(playlist.view(sessionId)?.lesson?.durationSeconds, lessonIndex === 0 ? 30 : 10);
-  }
-  const denied = playlist.command(sessionId, { kind: "queue-lesson", id: toCommandId("demo-excess-choice"), topic: "An unwanted third follow-up", atMs: 5 });
-  assert.equal(denied?.snapshot.playlist.length, 3);
-  assert.match(denied!.snapshot.warning!, /limited to 50 seconds/);
-  assert.equal(harness.renders.length, 10);
-  assert.equal(harness.prepareCalls.length, 3);
-  assert.equal(denied?.snapshot.metrics.estimatedSpendCents, 50);
-});
-
-test("provider failure stops new clips and cancels a selected but unstarted follow-up", async () => {
-  const harness = createHarness();
-  const playlist = new ClassroomPlaylistRuntime(harness.runtime);
-  const sessionId = toClassroomSessionId("classroom-stop-after-failure");
-  playlist.create({ sessionId });
-  playlist.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("failure-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
-  playlist.command(sessionId, { kind: "queue-lesson", id: toCommandId("failure-choice"), topic: "Explain related lunar ideas", atMs: 2 });
-  await waitFor(() => harness.renders.length === 2);
-  harness.renders[0]!.result.resolve({ ok: false, reason: "render-failed", message: "Unauthorized" });
-  harness.renders[1]!.result.resolve(successfulRender(2));
-  await waitFor(() => playlist.view(sessionId)?.metrics.activeVideoJobs === 0);
-  assert.equal(harness.renders.length, 2);
-  assert.equal(harness.prepareCalls.length, 1);
-  assert.equal(playlist.view(sessionId)?.playlist[1]?.kind, "failed");
-  assert.match(playlist.view(sessionId)!.warning!, /Unauthorized/);
-  for (const scene of playlist.view(sessionId)!.ready) {
-    playlist.command(sessionId, { kind: "report-playback", id: toCommandId(`failure-play-${scene.number}`), report: { kind: "started", sceneId: scene.id, atMs: 3 } });
-    playlist.command(sessionId, { kind: "report-playback", id: toCommandId(`failure-drain-${scene.number}`), report: { kind: "drained", finishedSceneId: scene.id, atMs: 4 } });
-  }
-  assert.equal(playlist.view(sessionId)?.phase, "complete");
-  assert.equal(playlist.view(sessionId)?.playlist[0]?.kind, "failed");
-  assert.equal(harness.renders.length, 2);
-  assert.equal(harness.prepareCalls.length, 1);
-});
-
 test("Gemini preparation failure never admits an H3 clip", async () => {
   const harness = createHarness({ preparation: Promise.resolve({ ok: false, message: "Gemini status 429", plannerAttemptsUsed: 1 }) });
   const sessionId = toClassroomSessionId("classroom-gemini-failure");
   harness.runtime.create({ sessionId });
-  harness.runtime.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("gemini-failure-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
+  harness.runtime.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("gemini-failure-start"), topic: "Why does the Moon have phases?", courseRole: "main", parentContext: null, atMs: 1 });
   await waitFor(() => harness.runtime.view(sessionId)?.phase === "complete");
   assert.equal(harness.prepareCalls.length, 1);
   assert.equal(harness.renders.length, 0);
@@ -328,7 +272,7 @@ test("a demo cannot be discarded while planning or rendering still owns paid wor
   const playlist = new ClassroomPlaylistRuntime(harness.runtime);
   const sessionId = toClassroomSessionId("classroom-busy-reset");
   playlist.create({ sessionId });
-  playlist.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("busy-reset-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
+  playlist.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("busy-reset-start"), topic: "Why does the Moon have phases?", courseRole: "main", parentContext: null, atMs: 1 });
   assert.equal(await playlist.clear(sessionId), false);
   assert.equal(await harness.runtime.clear(sessionId), false);
   preparation.resolve({ ok: true, lesson: lesson(), ledger: initialLedger(), plannerAttemptsUsed: 1 });

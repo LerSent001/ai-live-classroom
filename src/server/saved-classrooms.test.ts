@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseClassroomApiResponse, parseClassroomCommand, toClassroomSessionId, toCommandId } from "@/lib/classroom-boundaries";
 import { recordingTopicKey } from "@/lib/saved-classroom";
-import type { LessonDurationSeconds, LessonLedger, TeacherId } from "@/lib/classroom-types";
+import type { LessonLedger, TeacherId } from "@/lib/classroom-types";
 import { compileLessonScene, parseInitialLesson } from "@/server/lesson-plan";
 import { RecordingStore } from "@/server/recording-store";
 import { SavedClassrooms } from "@/server/saved-classrooms";
@@ -21,14 +21,25 @@ function fixture(t: TestContext) {
   const topics = ["测试重力原理", "测试失去重力", "测试大气层"];
   const ids = [id, toClassroomSessionId("saved-child-one"), toClassroomSessionId("saved-child-two")];
   for (const [index, sessionId] of ids.entries()) {
-    const durationSeconds: LessonDurationSeconds = index === 0 ? 30 : 10;
+    const sceneCount = index === 0 ? 6 : 2;
+    const courseRole = index === 0 ? "main" : "branch";
+    const parentContext = index === 0 ? null : {
+      parentSessionId: id,
+      parentTitle: topics[0]!,
+      parentBigQuestion: topics[0]!,
+      resumeSceneId: null,
+      resumeStepId: null,
+      currentConcept: "引力",
+      completedConcepts: ["引力"],
+    };
     const teacherId: TeacherId = "monokuma";
     const topic = topics[index]!;
-    const lesson = parseInitialLesson({ topic, teacherId, durationSeconds, latencyMs: 1, preparedBy: "fixture", output: JSON.stringify({
+    const lesson = parseInitialLesson({ topic, teacherId, courseRole, parentContext, latencyMs: 1, preparedBy: "fixture", output: JSON.stringify({
       title: topic, bigQuestion: topic, suggestedTopics: ["测试失去重力", "测试大气层", "未保存的问题"],
-      steps: Array.from({ length: durationSeconds / 5 }, () => ({ role: "mechanism", narration: "小球落到了地面。", concept: "引力", visualAction: "Monokuma releases a ball." })),
+      recommendedSceneCount: sceneCount,
+      steps: Array.from({ length: sceneCount }, () => ({ role: "mechanism", narration: "小球落到了地面。", concept: "引力", visualAction: "Monokuma releases a ball." })),
     }) });
-    store.record(id, "lesson-selection", { playlistId: id, sessionId, previousSessionId: index === 0 ? null : ids[index - 1], position: index + 1, topic, durationSeconds, teacherId });
+    store.record(id, "lesson-selection", { playlistId: id, sessionId, previousSessionId: index === 0 ? null : id, position: index + 1, topic, courseRole, parentContext, teacherId });
     store.record(sessionId, "lesson-prepared", { result: { ok: true, lesson } });
     let ledger: LessonLedger = { nextStepIndex: 0, conceptsPlanned: [], recentNarrations: [], recentVisuals: [] };
     for (const step of lesson.steps) {
@@ -69,6 +80,32 @@ test("the same topic and teacher select the complete saved 30/10/10 path with lo
   assert.deepEqual(course.lessons.map((lesson) => lesson.scenes.length), [6, 2, 2]);
   assert.equal(course.lessons[0]!.scenes[0]!.segment.videoUrl, `/api/saved-video/${id}/1`);
   assert.equal(course.lessons[0]!.scenes[0]!.segment.captions[0]!.text, "小球落到了地面。");
+});
+
+test("legacy fixed-duration recordings still replay as a main course with branch appendices", (t) => {
+  const { root, id, ids } = fixture(t);
+  for (const sessionId of ids) {
+    const path = join(root, sessionId, "events.jsonl");
+    const events = readFileSync(path, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    for (const event of events) {
+      if (event.kind === "lesson-prepared") {
+        delete event.data.result.lesson.courseRole;
+        delete event.data.result.lesson.parentContext;
+      }
+      if (event.kind === "lesson-selection") {
+        delete event.data.courseRole;
+        delete event.data.parentContext;
+        event.data.durationSeconds = event.data.position === 1 ? 30 : 10;
+        event.data.previousSessionId = event.data.position === 1
+          ? null
+          : ids[event.data.position - 2];
+      }
+    }
+    writeFileSync(path, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+  }
+  const course = new SavedClassrooms(root).load(id);
+  assert.deepEqual(course.lessons.map((entry) => entry.lesson.courseRole), ["main", "branch", "branch"]);
+  assert.deepEqual(course.lessons.map((entry) => entry.scenes.length), [6, 2, 2]);
 });
 
 test("missing and mismatched saved clips stay matched and fail instead of permitting new generation", (t) => {
@@ -167,7 +204,7 @@ test("saved videos support full responses, byte ranges, suffix ranges, and HEAD"
 test("media access rejects path traversal, out-of-range scenes, and symlinks", (t) => {
   const { saved, root, id } = fixture(t);
   assert.throws(() => saved.mediaPath("../elsewhere" as typeof id, 1));
-  assert.throws(() => saved.mediaPath(id, 7));
+  assert.throws(() => saved.mediaPath(id, 13));
   const path = join(root, id, "scene-01.mp4");
   rmSync(path);
   symlinkSync(join(root, id, "scene-02.mp4"), path);
