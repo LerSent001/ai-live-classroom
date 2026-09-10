@@ -46,7 +46,7 @@ export function TokenPayWallet({ ready }: { ready: boolean }) {
       TokenPay 已连接
     </button>;
   }
-  return <aside aria-label="TokenPay 钱包" className="tokenpay-wallet-panel">
+  return <aside aria-label="TokenPay 钱包" className={`tokenpay-wallet-panel${status.connected ? " tokenpay-wallet-panel-connected" : ""}`}>
     <div className="tokenpay-wallet-header">
       <strong>TokenPay 钱包</strong>
       {status.connected && <button aria-label="收起钱包" className="tokenpay-wallet-close" onClick={() => setExpanded(false)} type="button">收起</button>}
