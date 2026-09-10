@@ -34,6 +34,55 @@ textarea:focus { box-shadow: inset 0 0 0 3px var(--pink); }
 textarea:disabled { cursor: not-allowed; opacity: .55; }
 code, pre { font-family: var(--mono); }
 
+.tokenpay-wallet-chip,
+.tokenpay-wallet-panel {
+  position: fixed;
+  z-index: 80;
+  top: 16px;
+  right: 16px;
+  color: var(--white);
+  font-size: 13px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
+}
+.tokenpay-wallet-chip {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 250, 253, .28);
+  border-radius: 999px;
+  background: rgba(18, 20, 27, .76);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+.tokenpay-wallet-chip:hover { border-color: var(--pink); background: rgba(18, 20, 27, .92); }
+.tokenpay-wallet-chip > span { width: 7px; height: 7px; border-radius: 50%; background: #53e292; box-shadow: 0 0 8px rgba(83, 226, 146, .72); }
+.tokenpay-wallet-panel {
+  width: min(285px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(255, 250, 253, .16);
+  border-radius: 16px;
+  background: rgba(18, 20, 27, .94);
+  backdrop-filter: blur(14px);
+}
+.tokenpay-wallet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tokenpay-wallet-close { padding: 3px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.tokenpay-wallet-close:hover { color: var(--white); }
+.tokenpay-wallet-status { margin: 8px 0; }
+.tokenpay-wallet-note { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+.tokenpay-wallet-actions { display: flex; gap: 12px; }
+.tokenpay-wallet-actions button,
+.tokenpay-wallet-form button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--pink); background: transparent; color: var(--white); cursor: pointer; }
+.tokenpay-wallet-actions button:hover:not(:disabled),
+.tokenpay-wallet-form button:hover:not(:disabled) { background: var(--pink); color: var(--ink); }
+.tokenpay-wallet-actions button:disabled,
+.tokenpay-wallet-form button:disabled { cursor: default; opacity: .5; }
+.tokenpay-wallet-form { display: grid; gap: 8px; margin-top: 12px; }
+.tokenpay-wallet-form input { width: 100%; padding: 8px; border: 0; border-radius: 6px; background: white; color: #111; font: inherit; }
+.tokenpay-wallet-form button { justify-self: start; }
+.tokenpay-wallet-message { margin: 10px 0 0; color: #ff9ac5; font-size: 11px; line-height: 1.45; }
+
 .sr-only {
   position: absolute;
   width: 1px;
