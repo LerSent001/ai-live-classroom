@@ -3,7 +3,8 @@ import {
   toClassroomSessionId,
   toCommandId,
 } from "@/lib/classroom-boundaries";
-import { CLASSROOM_CONFIG, DEMO_CONFIG, sceneCountForDuration } from "@/lib/classroom-config";
+import { CLASSROOM_CONFIG, DEMO_CONFIG } from "@/lib/classroom-config";
+import { courseDocumentFromSnapshots } from "@/lib/course-document";
 import { lessonHasFailed, lessonIsBusy } from "@/lib/classroom-status";
 import { recordingTopicKey, type RecordedClassroom, type RecordedLesson } from "@/lib/saved-classroom";
 import type {
@@ -13,8 +14,9 @@ import type {
   ClassroomSnapshot,
   CommandId,
   CommandOutcome,
+  BranchLessonContext,
+  CourseRole,
   PlaylistLessonView,
-  LessonDurationSeconds,
   SceneId,
   TeacherId,
 } from "@/lib/classroom-types";
@@ -33,6 +35,8 @@ export type ClassroomWorkerRuntime = Readonly<{
 type PlaylistEntry = {
   sessionId: ClassroomSessionId;
   topic: string | null;
+  courseRole: CourseRole;
+  parentContext: BranchLessonContext | null;
   startCommandId: CommandId;
   started: boolean;
   cancelledMessage: string | null;
@@ -45,7 +49,8 @@ export type LessonSelection = Readonly<{
   previousSessionId: ClassroomSessionId | null;
   position: number;
   topic: string;
-  durationSeconds: LessonDurationSeconds;
+  courseRole: CourseRole;
+  parentContext: BranchLessonContext | null;
   commandId: CommandId;
 }>;
 
@@ -92,6 +97,7 @@ function playlistView(
     sessionId: entry.sessionId,
     position,
     topic: entry.topic ?? snapshot.topic ?? "Waiting for a lesson topic",
+    courseRole: entry.courseRole,
   };
   if (entry.cancelledMessage) {
     return { ...identity, kind: "failed", message: entry.cancelledMessage };
@@ -124,8 +130,10 @@ function playlistView(
     readyScenes: snapshot.scenes.filter(
       (scene) => scene.kind === "ready" || scene.kind === "playing" || scene.kind === "played",
     ).length,
-    targetScenes: snapshot.lesson?.targetSceneCount ?? sceneCountForDuration(
-      position === 1 ? DEMO_CONFIG.initialDurationSeconds : DEMO_CONFIG.followupDurationSeconds,
+    targetScenes: snapshot.lesson?.targetSceneCount ?? (
+      entry.courseRole === "main"
+        ? CLASSROOM_CONFIG.maxMainLessonScenes
+        : CLASSROOM_CONFIG.maxBranchLessonScenes
     ),
   };
 }
@@ -184,6 +192,8 @@ export class ClassroomPlaylistRuntime {
         {
           sessionId: input.sessionId,
           topic: null,
+          courseRole: "main",
+          parentContext: null,
           startCommandId: toCommandId(`playlist-start-${randomUUID()}`),
           started: false,
           cancelledMessage: null,
@@ -235,18 +245,13 @@ export class ClassroomPlaylistRuntime {
     let outcome: CommandOutcome;
     switch (command.kind) {
       case "start": {
-        if (command.durationSeconds !== DEMO_CONFIG.initialDurationSeconds) {
-          session.warning = "Start this demo with a 30-second lesson.";
-          session.version += 1;
-          outcome = { kind: "snapshot", snapshot: this.snapshot(session) };
-          break;
-        }
         const primary = session.entries[0];
         if (!primary) return null;
         if (!primary.started) {
           this.recordSelection?.({
             playlistId: session.id, sessionId: primary.sessionId, previousSessionId: null,
-            position: 1, topic: command.topic, durationSeconds: command.durationSeconds, commandId: command.id,
+            position: 1, topic: command.topic, courseRole: "main", parentContext: null,
+            commandId: command.id,
             teacherId: command.teacherId,
           });
         }
@@ -312,30 +317,30 @@ export class ClassroomPlaylistRuntime {
     session: PlaylistSession,
     command: Extract<ClassroomCommand, { kind: "queue-lesson" }>,
   ): CommandOutcome {
-    const active = this.activeEntry(session) ?? session.entries[0]!;
-    const activeIndex = session.entries.findIndex(
-      (entry) => entry.sessionId === active.sessionId,
-    );
-    const queuedCount = session.entries
-      .slice(activeIndex + 1)
-      .filter((entry) => !entry.cancelledMessage).length;
-    if (!session.entries[0]?.started) {
+    const primary = session.entries[0];
+    const primarySnapshot = primary ? this.worker.view(primary.sessionId) : null;
+    const branchInProgress = session.entries.slice(1).some((entry) => {
+      const snapshot = this.worker.view(entry.sessionId);
+      return entry.started && !entry.cancelledMessage && snapshot?.playback.kind !== "ended";
+    });
+    if (!primary?.started || !primarySnapshot?.lesson) {
       session.warning = "Start the current lesson before adding another one.";
     } else if (session.stopped) {
       session.warning = "This playlist is stopping and cannot accept another lesson.";
-    } else if (session.entries.length - 1 >= DEMO_CONFIG.maxFollowups) {
-      session.warning = "Both follow-ups have been selected. This demo is limited to 50 seconds.";
-    } else if (queuedCount >= CLASSROOM_CONFIG.maxQueuedLessons) {
-      session.warning = `The local playlist holds ${CLASSROOM_CONFIG.maxQueuedLessons} upcoming lessons at a time.`;
+    } else if (branchInProgress) {
+      session.warning = "Finish the current question branch before asking another one.";
+    } else if (session.entries.length - 1 >= DEMO_CONFIG.maxBranches) {
+      session.warning = `This promotional classroom supports ${DEMO_CONFIG.maxBranches} question branches.`;
     } else if (
-      session.entries.slice(activeIndex).some(
+      session.entries.some(
         (entry) =>
           !entry.cancelledMessage &&
           entry.topic?.toLowerCase() === command.topic.toLowerCase(),
       )
     ) {
-      session.warning = "That lesson is already in the playlist.";
+      session.warning = "That question already appears in this course.";
     } else {
+      const parentContext = this.branchContext(primarySnapshot);
       if (session.replay !== null) {
         const next = session.replay.lessons[session.entries.length];
         if (!next || recordingTopicKey(next.lesson.topic) !== recordingTopicKey(command.topic)) {
@@ -346,7 +351,15 @@ export class ClassroomPlaylistRuntime {
         const childId = toClassroomSessionId(`replay-child-${randomUUID()}`);
         this.worker.create({ sessionId: childId });
         this.worker.replay(childId, next);
-        session.entries.push({ sessionId: childId, topic: next.lesson.topic, startCommandId: childCommandId(command.id, "replay"), started: true, cancelledMessage: null });
+        session.entries.push({
+          sessionId: childId,
+          topic: next.lesson.topic,
+          courseRole: "branch",
+          parentContext,
+          startCommandId: childCommandId(command.id, "replay"),
+          started: true,
+          cancelledMessage: null,
+        });
         session.warning = null;
         session.version += 1;
         return { kind: "snapshot", snapshot: this.snapshot(session) };
@@ -356,19 +369,33 @@ export class ClassroomPlaylistRuntime {
       );
       this.recordSelection?.({
         playlistId: session.id, sessionId: childId,
-        previousSessionId: session.entries[session.entries.length - 1]!.sessionId,
+        previousSessionId: primary.sessionId,
         position: session.entries.length + 1, topic: command.topic,
         teacherId: this.primaryTeacher(session),
-        durationSeconds: DEMO_CONFIG.followupDurationSeconds, commandId: command.id,
+        courseRole: "branch", parentContext, commandId: command.id,
       });
       this.worker.create({ sessionId: childId });
-      session.entries.push({
+      const startCommandId = childCommandId(command.id, "start");
+      const entry: PlaylistEntry = {
         sessionId: childId,
         topic: command.topic,
-        startCommandId: childCommandId(command.id, "start"),
+        courseRole: "branch",
+        parentContext,
+        startCommandId,
         started: false,
         cancelledMessage: null,
+      };
+      session.entries.push(entry);
+      const workerOutcome = this.worker.command(childId, {
+        kind: "start",
+        id: startCommandId,
+        topic: command.topic,
+        courseRole: "branch",
+        parentContext,
+        teacherId: this.primaryTeacher(session),
+        atMs: command.atMs,
       });
+      entry.started = workerOutcome?.snapshot.production.kind !== "idle";
       session.warning = null;
       session.version += 1;
     }
@@ -377,7 +404,8 @@ export class ClassroomPlaylistRuntime {
 
   private schedule(session: PlaylistSession): void {
     if (session.stopped) return;
-    if (this.workerSnapshots(session).some(lessonHasFailed)) {
+    const primary = this.worker.view(session.id);
+    if (primary && lessonHasFailed(primary)) {
       session.stopped = true;
       for (const entry of session.entries) {
         if (!entry.started) entry.cancelledMessage = "Cancelled because the previous lesson failed.";
@@ -385,34 +413,25 @@ export class ClassroomPlaylistRuntime {
       session.version += 1;
       return;
     }
-    for (let index = 1; index < session.entries.length; index += 1) {
-      const entry = session.entries[index];
-      const predecessor = session.entries[index - 1];
-      if (!entry || !predecessor || entry.started || entry.cancelledMessage) continue;
-      const predecessorSnapshot = this.worker.view(predecessor.sessionId);
-      if (!predecessorSnapshot) return;
-      if (
-        !providerComplete(predecessorSnapshot) &&
-        !terminalFailure(predecessorSnapshot) &&
-        predecessorSnapshot.playback.kind !== "ended"
-      ) {
-        return;
-      }
-      const topic = entry.topic;
-      if (!topic) return;
-      const outcome = this.worker.command(entry.sessionId, {
-        kind: "start",
-        id: entry.startCommandId,
-        topic,
-        durationSeconds: DEMO_CONFIG.followupDurationSeconds,
-        teacherId: this.primaryTeacher(session),
-        atMs: Date.now(),
-      });
-      if (!outcome) return;
-      entry.started = outcome.snapshot.production.kind !== "idle";
-      session.version += 1;
-      return;
-    }
+  }
+
+  private branchContext(primary: ClassroomSnapshot): BranchLessonContext {
+    const playing = primary.scenes.find((scene) => scene.kind === "playing");
+    const resumeScene = playing ?? primary.scenes.find((scene) => scene.kind === "ready");
+    const resumeStepId = resumeScene?.plan.purpose.stepId ?? null;
+    const currentConcept = resumeScene?.plan.concept ?? null;
+    const completedConcepts = primary.scenes.flatMap((scene) =>
+      scene.kind === "played" ? [scene.plan.concept] : [],
+    );
+    return {
+      parentSessionId: primary.id,
+      parentTitle: primary.lesson?.title ?? primary.topic ?? "Main course",
+      parentBigQuestion: primary.lesson?.bigQuestion ?? primary.topic ?? "Main course",
+      resumeSceneId: resumeScene?.id ?? null,
+      resumeStepId,
+      currentConcept,
+      completedConcepts,
+    };
   }
 
   private primaryTeacher(session: PlaylistSession): TeacherId {
@@ -472,17 +491,13 @@ export class ClassroomPlaylistRuntime {
 
   private activeEntry(session: PlaylistSession): PlaylistEntry | null {
     const entries = session.entries.filter((entry) => entry.started && !entry.cancelledMessage);
-    return (
-      entries.find(
-        (entry) => this.worker.view(entry.sessionId)?.playback.kind === "playing",
-      ) ??
-      entries.find((entry) => {
-        const snapshot = this.worker.view(entry.sessionId);
-        return snapshot && snapshot.playback.kind !== "ended" && !terminalFailure(snapshot);
-      }) ??
-      entries.at(-1) ??
-      null
-    );
+    const activeBranch = [...entries].reverse().find((entry) => {
+      if (entry.courseRole !== "branch") return false;
+      const snapshot = this.worker.view(entry.sessionId);
+      return snapshot && snapshot.playback.kind !== "ended" && !terminalFailure(snapshot);
+    });
+    if (activeBranch) return activeBranch;
+    return entries[0] ?? entries.at(-1) ?? null;
   }
 
   private workerSnapshots(session: PlaylistSession): ClassroomSnapshot[] {
@@ -496,14 +511,9 @@ export class ClassroomPlaylistRuntime {
     const primary = snapshots[0];
     if (!primary) throw new Error("The primary classroom worker is missing");
     const activeEntry = this.activeEntry(session) ?? session.entries[0]!;
-    const activeIndex = Math.max(
-      0,
-      session.entries.findIndex((entry) => entry.sessionId === activeEntry.sessionId),
-    );
     const active = snapshots.find((snapshot) => snapshot.id === activeEntry.sessionId) ?? primary;
-    const ready = snapshots.slice(activeIndex).flatMap((snapshot) => snapshot.ready);
-    const playingOwner = snapshots.find((snapshot) => snapshot.playing !== null);
-    const playing = playingOwner?.playing ?? null;
+    const ready = active.ready;
+    const playing = active.playing;
     const playlist = session.entries.map((entry, index) => {
       const workerSnapshot = snapshots.find((snapshot) => snapshot.id === entry.sessionId);
       if (!workerSnapshot) throw new Error("A playlist worker is missing");
@@ -528,11 +538,27 @@ export class ClassroomPlaylistRuntime {
       hasPlaybackBegun: snapshots.some((snapshot) => snapshot.hasPlaybackBegun),
       ready,
       playing,
-      currentPrompt: playingOwner?.currentPrompt ?? null,
+      currentPrompt: active.currentPrompt,
       nextPrompt: ready[0]?.prompt ?? null,
       metrics: aggregateMetrics(active.metrics, snapshots, ready.length),
       warning: session.warning ?? active.warning,
       playlist,
+      playbackContext: {
+        kind: activeEntry.courseRole,
+        sessionId: activeEntry.sessionId,
+        returnTo: activeEntry.parentContext
+          ? {
+              sessionId: activeEntry.parentContext.parentSessionId,
+              sceneId: activeEntry.parentContext.resumeSceneId,
+              stepId: activeEntry.parentContext.resumeStepId,
+            }
+          : null,
+      },
+      courseDocument: courseDocumentFromSnapshots({
+        id: session.id,
+        snapshots,
+        activeSessionId: activeEntry.sessionId,
+      }),
     };
   }
 }

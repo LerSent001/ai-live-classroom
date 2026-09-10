@@ -1,6 +1,6 @@
 # AI Live Classroom · AI 在线课堂
 
-输入主题，由文本模型编写教案，再逐段生成讲解视频，在可交互的 3D 教室中播放。支持中文交互、教师形象选择、30 秒开场和最多两次 10 秒续讲。
+输入主题，由文本模型根据内容复杂度决定课程长度并编写结构化教案，再逐段生成带语音的五秒讲解视频，在可交互的 3D 教室中播放。课堂中提问会暂停主课、生成与当前知识点相关的问题分支，讲完后回到原视频的播放位置。
 
 ![课堂界面](docs/lobby-danganronpa.jpg)
 
@@ -33,9 +33,11 @@ npm run dev
 
 在 `http://localhost:3000` 打开教室。Key 加密保存在服务器忽略目录中，禁止提交到 Git。未连接钱包时，不发起课程规划或视频请求。
 
-只浏览教室或切换角色不收费；主动创建课程会调用付费服务。完整 30/10/10 路径最多提交 10 段五秒视频，同时最多生成两段。历史录制命中时直接播放已有视频，不产生新视频调用，也不再次计费。
+只浏览教室或切换角色不收费；主动创建课程会调用付费服务。主课由规划模型选择 2–12 段视频，每个问题分支选择 1–6 段，一堂课最多接受两个分支问题，同时最多生成两段。页面中的建议问题不会自动发起请求；只有用户明确提问才会开始分支生成。历史录制命中时直接播放已有视频，不产生新视频调用，也不再次计费。
 
-当前保留了原型的本地价格复核截止时间 `2026-09-07T00:00:00Z`，超过该时间会拒绝新增生成。这不是 TokenDance 的价格有效期。运行时的 `estimatedSpendCents` 等旧字段是保留的本地调度预算计数，不代表 TokenDance 人民币价格或实际账单；新视频记录的费用估算和实际扣费均保持 `null`，待平台价格与账单联调后更新。
+运行时的 `estimatedSpendCents` 等字段是本地调度预算计数，不代表 TokenDance 人民币价格或实际账单；新视频记录的费用估算和实际扣费均保持 `null`，待平台价格与账单联调后更新。
+
+规划完成后，课程内容会同步形成稳定的课件页，每页对应一个知识点和一段五秒视频时间线。已经播放过的问题分支会进入课件附录。所有页面的生成状态确定后，可下载 PPTX（原生文本可编辑）和 PDF 阅读版；导出只读取已有课件与视频，不会再调用模型。
 
 默认 `SAVE_RECORDINGS=1`，将脚本、任务 ID、结果元数据与下载的视频保存在 Git 忽略的 `recordings/`。日志不记录鉴权头或完整 Key。查询超时不代表远程任务被取消；使用已保存的任务 ID 核对状态，不应重复生成。
 
@@ -59,6 +61,9 @@ npm run verify
 
 - `src/server/tokenpay-video.ts`：唯一的视频创建与轮询实现。
 - `src/server/classroom-runtime-instance.ts`：课程规划与视频生成的服务端绑定。
+- `src/server/classroom-playlist-runtime.ts`：主课、问题分支、打断与恢复上下文。
+- `src/lib/course-document.ts`：将教案、五秒视频和问题附录映射为稳定课件页。
+- `src/server/course-export.ts`：将已有课件导出为 PPTX 和 PDF。
 - `src/lib/classroom-config.ts`：角色、提示词、固定模型、网关与 App URL。
 - `src/server/tokenpay-planner.ts`：通过 TokenDance 生成教案。
 - `src/components/set/`：Three.js / React Three Fiber 教室。
@@ -66,6 +71,8 @@ npm run verify
 ## 来源与许可
 
 基于 [internetphysics/live-classroom](https://github.com/internetphysics/live-classroom)，基础提交 `5a07110fa4e0b3dc4db0eab842bc6e0cf4169de4`。由 LerSent001 整理发布中文交互与课堂视觉修改版，保留原作者 MIT 许可和署名。
+
+课件编排、问题分支和导出流程参考了 [THU-MAIC/OpenMAIC](https://github.com/THU-MAIC/OpenMAIC) 的公开实现思路，本项目保留对应 MIT 许可和版权声明，详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 与 [`licenses/OpenMAIC-LICENSE`](licenses/OpenMAIC-LICENSE)。
 
 代码采用 MIT 许可。Monokuma、Monomi 与 Danganronpa 角色属于 Spike Chunsoft；第三方角色素材不受本项目 MIT 许可覆盖，发布仓库不代表取得商业使用许可。各素材来源与限制见 `public/characters/*/SOURCE.md` 和 `public/models/monokuma/SOURCE.md`。
 

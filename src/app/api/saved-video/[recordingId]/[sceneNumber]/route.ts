@@ -2,6 +2,7 @@ import { ownerFrom } from "@/server/tokenpay-wallet";
 import { isRecord, toClassroomSessionId } from "@/lib/classroom-boundaries";
 import { getSavedClassrooms } from "@/server/archive";
 import { recordedVideoResponse } from "@/server/recording-media";
+import { CLASSROOM_CONFIG } from "@/lib/classroom-config";
 
 export const runtime = "nodejs";
 
@@ -13,8 +14,11 @@ async function media(request: Request, context: Context, head: boolean): Promise
   const params = await context.params;
   try {
     const id = toClassroomSessionId(params.recordingId);
-    if (!/^[1-6]$/.test(params.sceneNumber)) return new Response(null, { status: 404 });
-    const path = getSavedClassrooms(owner).mediaPath(id, Number(params.sceneNumber));
+    const sceneNumber = Number(params.sceneNumber);
+    if (!Number.isInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CLASSROOM_CONFIG.maxLessonScenes) {
+      return new Response(null, { status: 404 });
+    }
+    const path = getSavedClassrooms(owner).mediaPath(id, sceneNumber);
     return recordedVideoResponse(path, request.headers.get("range"), head);
   } catch (error) {
     const missing = isRecord(error) && error.code === "ENOENT";

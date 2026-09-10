@@ -31,13 +31,17 @@ export class SavedClassrooms {
     });
   }
 
-  private lesson(id: ClassroomSessionId): RecordedLesson {
+  private lesson(id: ClassroomSessionId, legacyRole?: "main" | "branch"): RecordedLesson {
     const events = this.events(id);
     const prepared = events.find((event) => event.kind === "lesson-prepared");
     if (!prepared) throw new Error("课程脚本尚未保存完成。");
     const result = object(prepared.data.result);
     if (result.ok !== true) throw new Error("课程脚本未成功完成。");
-    const lesson = parseLessonPlan(result.lesson);
+    const lessonRecord = object(result.lesson);
+    const parsedLesson = parseLessonPlan(lessonRecord);
+    const lesson = lessonRecord.courseRole === undefined && legacyRole
+      ? { ...parsedLesson, courseRole: legacyRole }
+      : parsedLesson;
     if (lesson.steps.length !== lesson.targetSceneCount) throw new Error("Saved lesson steps are incomplete.");
     const scenes = lesson.steps.map((step, index) => {
       const number = index + 1;
@@ -72,20 +76,30 @@ export class SavedClassrooms {
 
   load(recordingId: ClassroomSessionId): RecordedClassroom {
     const selections = this.events(recordingId).filter((event) => event.kind === "lesson-selection").map((event) => event.data);
-    if (selections.length < 1 || selections.length > 1 + DEMO_CONFIG.maxFollowups) throw new Error("Saved classroom path is invalid.");
-    let previous: string | null = null;
+    if (selections.length < 1 || selections.length > 1 + DEMO_CONFIG.maxBranches) throw new Error("Saved classroom path is invalid.");
     let teacher: TeacherId | null = null;
     const lessons = selections.map((selection, index) => {
       const id = toClassroomSessionId(text(selection.sessionId));
-      if (selection.playlistId !== recordingId || selection.position !== index + 1 || selection.previousSessionId !== previous || (index === 0 && id !== recordingId)) {
+      const legacySelection = selection.courseRole === undefined;
+      const expectedParent = index === 0
+        ? null
+        : legacySelection
+          ? selections[index - 1]?.sessionId
+          : recordingId;
+      if (selection.playlistId !== recordingId || selection.position !== index + 1 || selection.previousSessionId !== expectedParent || (index === 0 && id !== recordingId)) {
         throw new Error("Saved classroom selections are out of order.");
       }
-      const recorded = this.lesson(id);
-      const expectedDuration = index === 0 ? DEMO_CONFIG.initialDurationSeconds : DEMO_CONFIG.followupDurationSeconds;
-      if (recorded.lesson.topic !== selection.topic || recorded.lesson.teacherId !== selection.teacherId || recorded.lesson.durationSeconds !== expectedDuration || selection.durationSeconds !== expectedDuration || (teacher !== null && teacher !== recorded.lesson.teacherId)) {
+      const expectedRole = index === 0 ? "main" : "branch";
+      const recorded = this.lesson(id, expectedRole);
+      if (
+        recorded.lesson.topic !== selection.topic ||
+        recorded.lesson.teacherId !== selection.teacherId ||
+        recorded.lesson.courseRole !== expectedRole ||
+        (!legacySelection && selection.courseRole !== expectedRole) ||
+        (teacher !== null && teacher !== recorded.lesson.teacherId)
+      ) {
         throw new Error("Saved classroom selection does not match its lesson.");
       }
-      previous = id;
       teacher = recorded.lesson.teacherId;
       return recorded;
     });
@@ -120,7 +134,7 @@ export class SavedClassrooms {
 
   mediaPath(id: ClassroomSessionId, sceneNumber: number): string {
     const directory = join(this.root, toClassroomSessionId(id));
-    if (!Number.isInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > 6 || !lstatSync(directory).isDirectory()) throw new Error("Invalid recording video path.");
+    if (!Number.isInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CLASSROOM_CONFIG.maxLessonScenes || !lstatSync(directory).isDirectory()) throw new Error("Invalid recording video path.");
     const path = join(directory, `scene-${String(sceneNumber).padStart(2, "0")}.mp4`);
     if (!lstatSync(path).isFile()) throw new Error("Recording video must be a local file.");
     return path;

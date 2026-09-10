@@ -10,7 +10,7 @@ test("short Chinese topics work for initial and follow-up commands with one shar
   for (const topic of ["重力", "光合作用", "  AI  ", "用中文讲解 F=ma"]) {
     assert.equal(isValidTopic(topic), true);
     for (const kind of ["start", "queue-lesson"]) {
-      const result = parseClassroomCommand({ kind, id: "chinese-test", topic, durationSeconds: 30, atMs: 1 });
+      const result = parseClassroomCommand({ kind, id: "chinese-test", topic, atMs: 1 });
       assert.ok("topic" in result);
       assert.equal(result.topic, topic.trim());
     }
@@ -31,25 +31,25 @@ test("IME confirmation and shift-enter never submit a paid lesson", () => {
 
 test("Chinese planner output reaches validated lesson and H3 dialogue unchanged", async () => {
   const narration = "松开手，小球就会被地球的引力拉向地面。";
-  const script = { title: "重力", bigQuestion: "小球为什么落地？", suggestedTopics: ["月球", "失重", "轨道"], steps: [
+  const script = { title: "重力", bigQuestion: "小球为什么落地？", recommendedSceneCount: 2, suggestedTopics: ["月球", "失重", "轨道"], steps: [
     { role: "example", narration, concept: "地球引力使小球下落", visualAction: "Monokuma releases a ball above a floor diagram." },
     { role: "recap", narration: "引力一直存在，支撑力让我们站稳。", concept: "支撑力与重力平衡", visualAction: "Monokuma points at equal opposing force arrows." },
   ] };
-  const prompt = preparationPrompt("重力", 2, "monokuma");
+  const prompt = preparationPrompt("重力", "monokuma", "main", null);
   assert.match(prompt, /Simplified Chinese/);
   assert.match(prompt, /natural spoken Mandarin/);
   const output = await requestTokenPayPlan({ apiKey: "mock", prompt, systemPrompt: "JSON" }, async (_url, init) => {
     assert.ok(String(init?.body).includes("重力"));
     return Response.json({ choices: [{ message: { content: JSON.stringify(script) } }] });
   });
-  const lesson = parseInitialLesson({ teacherId: "monokuma", topic: "重力", durationSeconds: 10, output, latencyMs: 1, preparedBy: "mock" });
+  const lesson = parseInitialLesson({ teacherId: "monokuma", topic: "重力", courseRole: "main", parentContext: null, output, latencyMs: 1, preparedBy: "mock" });
   assert.deepEqual(lesson.suggestedTopics, ["月球", "失重", "轨道"]);
   assert.equal(lesson.steps[0]!.narration, narration);
   const h3 = compileH3ScenePrompt({ teacherId: "monokuma", sceneNumber: 1, narration: lesson.steps[0]!.narration, visualAction: lesson.steps[0]!.visualAction });
   assert.ok(h3.includes(narration));
   assert.match(h3, /Mandarin Chinese/);
   assert.doesNotMatch(h3, /American English/);
-  const withoutSuggestions = parseInitialLesson({ teacherId: "monokuma", topic: "重力", durationSeconds: 10, output: JSON.stringify({ ...script, suggestedTopics: [] }), latencyMs: 1, preparedBy: "mock" });
+  const withoutSuggestions = parseInitialLesson({ teacherId: "monokuma", topic: "重力", courseRole: "main", parentContext: null, output: JSON.stringify({ ...script, suggestedTopics: [] }), latencyMs: 1, preparedBy: "mock" });
   assert.ok(withoutSuggestions.suggestedTopics.every((topic) => /[\u4e00-\u9fff]/.test(topic)));
-  assert.match(preparationPrompt("Explain gravity", 6, "monokuma"), /8–12 spoken words/);
+  assert.match(preparationPrompt("Explain gravity", "monokuma", "main", null), /8–12 spoken words/);
 });

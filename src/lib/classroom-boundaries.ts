@@ -9,6 +9,11 @@ import type {
   ClassroomPolicy,
   ClassroomSessionId,
   ClassroomSnapshot,
+  CourseDocument,
+  CoursePage,
+  CourseRole,
+  CourseSection,
+  BranchLessonContext,
   CommandId,
   CommandOutcome,
   EffectId,
@@ -121,8 +126,34 @@ export function toPrompt(value: string): Prompt {
 }
 
 function durationOf(value: unknown): LessonDurationSeconds {
-  if (value !== 10 && value !== 30) throw new Error("durationSeconds must be 10 or 30");
-  return value;
+  const duration = integerOf(value, "durationSeconds");
+  if (
+    duration < CLASSROOM_CONFIG.clipDurationSeconds ||
+    duration > CLASSROOM_CONFIG.maxLessonScenes * CLASSROOM_CONFIG.clipDurationSeconds ||
+    duration % CLASSROOM_CONFIG.clipDurationSeconds !== 0
+  ) {
+    throw new Error("durationSeconds must match an allowed adaptive scene count");
+  }
+  return duration;
+}
+
+function parseCourseRole(value: unknown): CourseRole {
+  if (value === "main" || value === "branch") return value;
+  throw new Error("Unknown course role");
+}
+
+function parseBranchContext(value: unknown): BranchLessonContext | null {
+  if (value === null) return null;
+  const record = recordOf(value, "branch context");
+  return {
+    parentSessionId: toClassroomSessionId(stringOf(record.parentSessionId, "parent session id")),
+    parentTitle: nonEmptyStringOf(record.parentTitle, "parent title"),
+    parentBigQuestion: nonEmptyStringOf(record.parentBigQuestion, "parent big question"),
+    resumeSceneId: record.resumeSceneId === null ? null : toSceneId(stringOf(record.resumeSceneId, "resume scene id")),
+    resumeStepId: record.resumeStepId === null ? null : toLessonStepId(stringOf(record.resumeStepId, "resume step id")),
+    currentConcept: nullableStringOf(record.currentConcept, "current concept"),
+    completedConcepts: arrayOf(record.completedConcepts, "completed concepts", (item) => nonEmptyStringOf(item, "completed concept")),
+  };
 }
 
 function topicOf(value: unknown): string {
@@ -190,7 +221,8 @@ export function parseClassroomCommand(value: unknown): ClassroomCommand {
       teacherId: record.teacherId === undefined ? DEFAULT_TEACHER_ID : parseTeacherId(record.teacherId),
       id,
       topic: topicOf(record.topic),
-      durationSeconds: durationOf(record.durationSeconds),
+      courseRole: "main",
+      parentContext: null,
       atMs: integerOf(record.atMs, "command time"),
     };
   }
@@ -250,13 +282,16 @@ export function parseLessonPlan(value: unknown): LessonPlan {
   const record = recordOf(value, "lesson plan");
   const durationSeconds = durationOf(record.durationSeconds);
   const targetSceneCount = integerOf(record.targetSceneCount, "target scene count");
-  if (targetSceneCount !== 2 && targetSceneCount !== 6) {
-    throw new Error("target scene count must be 2 or 6");
-  }
+  const courseRole = record.courseRole === undefined ? "main" : parseCourseRole(record.courseRole);
+  const minimum = courseRole === "main" ? CLASSROOM_CONFIG.minMainLessonScenes : CLASSROOM_CONFIG.minBranchLessonScenes;
+  const maximum = courseRole === "main" ? CLASSROOM_CONFIG.maxMainLessonScenes : CLASSROOM_CONFIG.maxBranchLessonScenes;
+  if (targetSceneCount < minimum || targetSceneCount > maximum) throw new Error("target scene count is outside the adaptive range");
   if (targetSceneCount * CLASSROOM_CONFIG.clipDurationSeconds !== durationSeconds) {
     throw new Error("scene count must match the lesson duration");
   }
   return {
+    courseRole,
+    parentContext: record.parentContext === undefined ? null : parseBranchContext(record.parentContext),
     topic: nonEmptyStringOf(record.topic, "lesson topic"),
     teacherId: parseTeacherId(record.teacherId),
     title: nonEmptyStringOf(record.title, "lesson title"),
@@ -412,7 +447,10 @@ function parsePolicy(value: unknown): ClassroomPolicy {
   const record = recordOf(value, "classroom policy");
   return {
     clipDurationSeconds: numberOf(record.clipDurationSeconds, "clip duration"),
-    durationOptionsSeconds: arrayOf(record.durationOptionsSeconds, "duration options", durationOf),
+    minMainLessonScenes: integerOf(record.minMainLessonScenes, "minimum main lesson scenes"),
+    maxMainLessonScenes: integerOf(record.maxMainLessonScenes, "maximum main lesson scenes"),
+    minBranchLessonScenes: integerOf(record.minBranchLessonScenes, "minimum branch lesson scenes"),
+    maxBranchLessonScenes: integerOf(record.maxBranchLessonScenes, "maximum branch lesson scenes"),
     startupRunwayScenes: integerOf(record.startupRunwayScenes, "startup runway"),
     steadyRunwayScenes: integerOf(record.steadyRunwayScenes, "steady runway"),
     recoveryRunwayScenes: integerOf(record.recoveryRunwayScenes, "recovery runway"),
@@ -432,6 +470,9 @@ function parsePlaylistLesson(value: unknown): PlaylistLessonView {
     sessionId: toClassroomSessionId(stringOf(record.sessionId, "playlist session id")),
     position: integerOf(record.position, "playlist position"),
     topic: topicOf(record.topic),
+    courseRole: record.courseRole === undefined
+      ? (integerOf(record.position, "playlist position") === 1 ? "main" : "branch")
+      : parseCourseRole(record.courseRole),
   };
   if (
     record.kind === "waiting" ||
@@ -458,6 +499,77 @@ function parsePlaylistLesson(value: unknown): PlaylistLessonView {
     };
   }
   throw new Error("Unknown playlist lesson state");
+}
+
+function parseCoursePage(value: unknown): CoursePage {
+  const record = recordOf(value, "course page");
+  const media = recordOf(record.media, "course page media");
+  const status = stringOf(media.status, "course page media status");
+  if (status !== "pending" && status !== "ready" && status !== "failed") {
+    throw new Error("Unknown course page media status");
+  }
+  return {
+    id: nonEmptyStringOf(record.id, "course page id"),
+    sectionId: nonEmptyStringOf(record.sectionId, "course section id"),
+    stepId: toLessonStepId(stringOf(record.stepId, "course page step id")),
+    position: integerOf(record.position, "course page position"),
+    role: parseRole(record.role),
+    title: nonEmptyStringOf(record.title, "course page title"),
+    teachingGoal: nonEmptyStringOf(record.teachingGoal, "course page teaching goal"),
+    narration: nonEmptyStringOf(record.narration, "course page narration"),
+    concept: nonEmptyStringOf(record.concept, "course page concept"),
+    summary: nonEmptyStringOf(record.summary, "course page summary"),
+    visualAction: nonEmptyStringOf(record.visualAction, "course page visual action"),
+    startSeconds: numberOf(record.startSeconds, "course page start"),
+    endSeconds: numberOf(record.endSeconds, "course page end"),
+    media: {
+      sceneId: media.sceneId === null ? null : toSceneId(stringOf(media.sceneId, "course page scene id")),
+      status,
+      videoUrl: nullableStringOf(media.videoUrl, "course page video URL"),
+    },
+  };
+}
+
+function parseCourseSection(value: unknown): CourseSection {
+  const record = recordOf(value, "course section");
+  return {
+    id: nonEmptyStringOf(record.id, "course section id"),
+    sessionId: toClassroomSessionId(stringOf(record.sessionId, "course section session id")),
+    kind: parseCourseRole(record.kind),
+    topic: topicOf(record.topic),
+    title: nonEmptyStringOf(record.title, "course section title"),
+    bigQuestion: nonEmptyStringOf(record.bigQuestion, "course section question"),
+    durationSeconds: durationOf(record.durationSeconds),
+    pages: arrayOf(record.pages, "course pages", parseCoursePage),
+  };
+}
+
+function parseCourseDocument(value: unknown): CourseDocument {
+  const record = recordOf(value, "course document");
+  return {
+    id: nonEmptyStringOf(record.id, "course document id"),
+    title: nonEmptyStringOf(record.title, "course document title"),
+    subject: nonEmptyStringOf(record.subject, "course document subject"),
+    teacherId: parseTeacherId(record.teacherId),
+    main: record.main === null ? null : parseCourseSection(record.main),
+    appendices: arrayOf(record.appendices, "course appendices", parseCourseSection),
+    activeSectionId: nullableStringOf(record.activeSectionId, "active course section"),
+    exportReady: booleanOf(record.exportReady, "course export readiness"),
+  };
+}
+
+function parsePlaybackContext(value: unknown): ClassroomSnapshot["playbackContext"] {
+  const record = recordOf(value, "playback context");
+  const returnTo = record.returnTo === null ? null : recordOf(record.returnTo, "playback return target");
+  return {
+    kind: parseCourseRole(record.kind),
+    sessionId: toClassroomSessionId(stringOf(record.sessionId, "playback context session id")),
+    returnTo: returnTo === null ? null : {
+      sessionId: toClassroomSessionId(stringOf(returnTo.sessionId, "return session id")),
+      sceneId: returnTo.sceneId === null ? null : toSceneId(stringOf(returnTo.sceneId, "return scene id")),
+      stepId: returnTo.stepId === null ? null : toLessonStepId(stringOf(returnTo.stepId, "return step id")),
+    },
+  };
 }
 
 function parseMetrics(value: unknown): ClassroomMetrics {
@@ -498,6 +610,8 @@ function parseSnapshot(value: unknown): ClassroomSnapshot {
     phase: parsePhase(record.phase),
     topic: nullableStringOf(record.topic, "topic"),
     lesson: record.lesson === null ? null : parseLessonPlan(record.lesson),
+    courseDocument: parseCourseDocument(record.courseDocument),
+    playbackContext: parsePlaybackContext(record.playbackContext),
     production: parseProduction(record.production),
     playback: parsePlayback(record.playback),
     hasPlaybackBegun: booleanOf(record.hasPlaybackBegun, "has playback begun"),

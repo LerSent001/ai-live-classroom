@@ -6,7 +6,6 @@ import {
 import type { ClassroomApiResponse } from "@/lib/classroom-types";
 import { getClassroomRuntime } from "@/server/classroom-runtime-instance";
 import { getSavedClassrooms } from "@/server/archive";
-import { DEMO_CONFIG } from "@/lib/classroom-config";
 
 export const runtime = "nodejs";
 
@@ -71,7 +70,7 @@ export async function POST(
     const sessionId = await sessionIdFrom(context);
     const command = parseClassroomCommand(body);
     const saved = getSavedClassrooms(owner);
-    const match = command.kind === "start" && command.durationSeconds === DEMO_CONFIG.initialDurationSeconds
+    const match = command.kind === "start"
       ? saved.find(command.topic, command.teacherId)
       : null;
     // Known recordings never fall through to a new paid request, even if a file is missing.

@@ -7,8 +7,8 @@ import { ClassroomSet } from "@/components/classroom-set";
 import { ClassroomEntrance } from "@/components/classroom-entrance";
 import type { EntrancePhase } from "@/components/set/camera-motion";
 import { TeacherPortrait } from "@/components/teacher-portrait";
-import { CLASSROOM_CONFIG, DEMO_CONFIG, DEFAULT_TEACHER_ID, TEACHERS, sceneCountForDuration } from "@/lib/classroom-config";
-import type { TeacherId } from "@/lib/classroom-types";
+import { CLASSROOM_CONFIG, DEMO_CONFIG, DEFAULT_TEACHER_ID, TEACHERS } from "@/lib/classroom-config";
+import type { CourseSection, TeacherId } from "@/lib/classroom-types";
 import { useClassroom } from "@/hooks/use-classroom";
 import { useContinuousSoundtrack } from "@/hooks/use-continuous-soundtrack";
 import { isLessonSubmitKey, isValidTopic } from "@/lib/lesson-language";
@@ -52,21 +52,20 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
     () => new Set(classroom.playlist.slice(1).map((lesson) => lesson.topic.toLowerCase())),
     [classroom.playlist],
   );
-  const current = classroom.playlist.find((lesson) => lesson.kind === "playing")
+  const current = classroom.playlist.find(
+    (lesson) => lesson.sessionId === snapshot?.playbackContext.sessionId,
+  )
+    ?? classroom.playlist.find((lesson) => lesson.kind === "playing")
     ?? classroom.playlist.find((lesson) => lesson.kind !== "complete" && lesson.kind !== "failed")
     ?? classroom.playlist[classroom.playlist.length - 1]
     ?? null;
-  const upcoming = classroom.playlist.filter(
-    (lesson) => lesson !== current && lesson.kind !== "complete" && lesson.kind !== "failed",
-  );
-  const aired = classroom.playlist.filter((lesson) => lesson.kind === "complete" && lesson !== current);
-  const targetScenes = snapshot?.lesson?.targetSceneCount ?? sceneCountForDuration(
-    current && current.position > 1 ? DEMO_CONFIG.followupDurationSeconds : DEMO_CONFIG.initialDurationSeconds,
-  );
+  const targetScenes = snapshot?.lesson?.targetSceneCount ?? 0;
   const playedScenes = snapshot?.scenes.filter((scene) => scene.kind === "played").length ?? 0;
   const clipSeconds = CLASSROOM_CONFIG.clipDurationSeconds;
   const playingScene = snapshot?.scenes.find((scene) => scene.kind === "playing") ?? null;
-  const playingKey = playingScene && snapshot ? `${snapshot.id}:${playingScene.number}` : null;
+  const playingKey = playingScene && snapshot
+    ? `${snapshot.playbackContext.sessionId}:${playingScene.id}`
+    : null;
 
   // The server only reports whole scenes; assume each clip runs its nominal length and tick between updates.
   const [sceneElapsed, setSceneElapsed] = useState<{ key: string | null; seconds: number }>({ key: null, seconds: 0 });
@@ -87,7 +86,21 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
   const secondsLeft = Math.max(0, Math.ceil(totalSeconds - playedSeconds));
   const progress = totalSeconds > 0 ? playedSeconds / totalSeconds : 0;
   const followupsUsed = Math.max(0, classroom.playlist.length - 1);
-  const allFollowupsSelected = followupsUsed >= DEMO_CONFIG.maxFollowups;
+  const allFollowupsSelected = followupsUsed >= DEMO_CONFIG.maxBranches;
+  const courseDocument = snapshot?.courseDocument ?? null;
+  const courseSections = courseDocument
+    ? [courseDocument.main, ...courseDocument.appendices].filter(
+        (section): section is CourseSection => section !== null,
+      )
+    : [];
+  const activeSection = courseSections.find(
+    (section) => section.id === courseDocument?.activeSectionId,
+  ) ?? courseSections[0] ?? null;
+  const playingStepId = snapshot?.playing?.purpose.stepId ?? null;
+  const activePage = activeSection?.pages.find((page) => page.stepId === playingStepId)
+    ?? activeSection?.pages.find((page) => page.media.status === "ready")
+    ?? activeSection?.pages[0]
+    ?? null;
 
   const queueLesson = useCallback(async (nextTopic: string) => {
     music.arm();
@@ -99,7 +112,7 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
   const startLesson = () => {
     if (entrancePhase !== "ready" || !classroom.actions.canStart || !isValidTopic(topic)) return;
     music.arm();
-    void classroom.actions.start({ topic, teacherId: selectedTeacherId, durationSeconds: DEMO_CONFIG.initialDurationSeconds });
+    void classroom.actions.start({ topic, teacherId: selectedTeacherId });
   };
 
   const addCustomTopic = () => {
@@ -111,9 +124,7 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
 
   const signoff: SignoffState = phase !== "complete"
     ? null
-    : upcoming[0]
-      ? { kind: "queued", topic: upcoming[0].topic }
-      : classroom.actions.canQueue && classroom.suggestedTopics.length > 0
+    : classroom.actions.canQueue && classroom.suggestedTopics.length > 0
         ? {
             kind: "picks",
             picks: classroom.suggestedTopics,
@@ -224,51 +235,90 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
           <div className="guide-body">
             <section className="guide-now">
               <div className="guide-now-head">
-                <strong>{phase === "preparing" ? "正在准备课堂…" : snapshot?.lesson?.title ?? current?.topic ?? snapshot?.topic ?? "Tuning in"}</strong>
+                <strong>
+                  {phase === "preparing"
+                    ? snapshot?.playbackContext.kind === "branch" ? "正在准备问题分支…" : "正在规划课程结构…"
+                    : snapshot?.lesson?.title ?? current?.topic ?? snapshot?.topic ?? "Tuning in"}
+                </strong>
               </div>
               {phase !== "preparing" && snapshot?.lesson?.title && <small>{current?.topic ?? snapshot?.topic}</small>}
               <div className="guide-progress" aria-label={`${Math.round(progress * 100)} percent played`}>
                 <span style={{ width: `${progress * 100}%` }} />
               </div>
               <div className="guide-meta">
-                <span>{lineupStatus(current ?? { kind: "preparing" } as PlaylistLesson)}</span>
-                <span>{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")} left</span>
+                <span>{current ? lineupStatus(current) : "loading"}</span>
+                <span>
+                  {targetScenes === 0
+                    ? "AI 正在决定时长"
+                    : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")} left`}
+                </span>
               </div>
             </section>
 
-            <section className="guide-section">
-              <h2 className="guide-title">Up next</h2>
-              {upcoming.length === 0 ? (
-                <p className="guide-empty">{allFollowupsSelected ? "All follow-ups selected." : "Choose a follow-up to continue."}</p>
-              ) : (
-                <ol className="guide-queue">
-                  {upcoming.map((lesson, index) => (
-                    <li key={lesson.sessionId}>
-                      <span>{index + 1}</span>
+            {activePage && (
+              <section className="guide-section courseware-current" aria-live="polite">
+                <div className="courseware-current-head">
+                  <h2 className="guide-title">
+                    {activeSection?.kind === "branch" ? "问题分支" : "当前课件"}
+                  </h2>
+                  <span>{activePage.startSeconds}–{activePage.endSeconds}s</span>
+                </div>
+                <strong>{activePage.title}</strong>
+                <p>{activePage.summary}</p>
+              </section>
+            )}
+
+            {activeSection && (
+              <section className="guide-section">
+                <h2 className="guide-title">课程结构</h2>
+                <ol className="courseware-pages">
+                  {activeSection.pages.map((page) => (
+                    <li
+                      className={page.id === activePage?.id ? "courseware-page-active" : ""}
+                      key={page.id}
+                    >
+                      <span>{String(page.position).padStart(2, "0")}</span>
                       <div>
-                        <p>{lesson.topic}</p>
-                        <small>{lineupStatus(lesson)}</small>
+                        <p>{page.title}</p>
+                        <small>{page.media.status === "ready" ? "视频已生成" : page.media.status === "failed" ? "文字课件" : "生成中"}</small>
                       </div>
                     </li>
                   ))}
                 </ol>
-              )}
-            </section>
+              </section>
+            )}
 
+            {courseDocument && courseDocument.appendices.length > 0 && (
+              <section className="guide-section courseware-appendices">
+                <h2 className="guide-title">问题附录</h2>
+                <ol>
+                  {courseDocument.appendices.map((section, index) => (
+                    <li key={section.id}><span>A{index + 1}</span>{section.title}</li>
+                  ))}
+                </ol>
+              </section>
+            )}
 
-            {aired.length > 0 && (
-              <section className="guide-section guide-aired">
-                <h2 className="guide-title">Previously aired</h2>
-                <ul>
-                  {aired.map((lesson) => <li key={lesson.sessionId}>{lesson.topic}</li>)}
-                </ul>
+            {courseDocument?.exportReady && (
+              <section className="guide-section courseware-downloads">
+                <h2 className="guide-title">下载课件</h2>
+                <div>
+                  <a download href={`/api/classroom/${snapshot?.id}/export?format=pptx`}>PPTX 可编辑版</a>
+                  <a download href={`/api/classroom/${snapshot?.id}/export?format=pdf`}>PDF 阅读版</a>
+                </div>
+                <small>复用本次已生成的视频，不会再次调用模型。</small>
               </section>
             )}
           </div>
 
           <div className="guide-add">
+            <p className="guide-add-note">
+              {snapshot?.playbackContext.kind === "branch"
+                ? "主课已暂停。回答完成后会回到刚才的位置。"
+                : "随时提问。系统会保存当前播放位置，先回答问题，再继续主课。"}
+            </p>
             <div className="guide-add-row">
-            <label className="sr-only" htmlFor="custom-topic">Add a topic to the queue</label>
+            <label className="sr-only" htmlFor="custom-topic">提出课堂问题</label>
             <input
               disabled={!classroom.actions.canQueue || queueingTopic !== null}
               id="custom-topic"
@@ -280,17 +330,17 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
                   addCustomTopic();
                 }
               }}
-              placeholder={classroom.actions.canQueue ? "接下来想了解什么？" : allFollowupsSelected ? "All follow-ups selected" : "Waiting for the next lesson"}
+              placeholder={classroom.actions.canQueue ? "对这里有什么问题？" : allFollowupsSelected ? "本次体验的问题分支已用完" : "正在回答当前问题"}
               value={customTopic}
             />
             <button
-              aria-label="Add topic to queue"
+              aria-label="提出课堂问题"
               className="composer-action"
               disabled={!classroom.actions.canQueue || !isValidTopic(customTopic) || queueingTopic !== null}
               onClick={addCustomTopic}
               type="button"
             >
-              +
+              ?
             </button>
             </div>
             {classroom.suggestedTopics.length > 0 && (

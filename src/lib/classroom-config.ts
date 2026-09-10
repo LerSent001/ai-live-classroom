@@ -1,5 +1,7 @@
 import type {
+  BranchLessonContext,
   ClassroomPolicy,
+  CourseRole,
   LessonDurationSeconds,
   LessonSceneCount,
   TeacherId,
@@ -89,34 +91,31 @@ export function compileH3ScenePrompt(input: H3SceneInput): string {
 }
 
 
-export const LESSON_DURATION_OPTIONS = [30, 10] as const satisfies readonly LessonDurationSeconds[];
-
 export const DEMO_CONFIG = {
-  initialDurationSeconds: 30,
-  followupDurationSeconds: 10,
-  maxFollowups: 2,
-  // Conservative local review deadline retained during the gateway migration; not a provider quote.
-  pricingValidBefore: "2026-09-07T00:00:00Z",
+  maxBranches: 2,
 } as const;
 
-export function demoPricingAvailable(nowMs = Date.now()): boolean {
-  return nowMs < Date.parse(DEMO_CONFIG.pricingValidBefore);
-}
-
 export function sceneCountForDuration(durationSeconds: LessonDurationSeconds): LessonSceneCount {
-  const counts: Record<LessonDurationSeconds, LessonSceneCount> = { 10: 2, 30: 6 };
-  return counts[durationSeconds];
+  if (!Number.isInteger(durationSeconds) || durationSeconds < CLASSROOM_CONFIG.clipDurationSeconds) {
+    throw new Error("Lesson duration must be a positive whole number of seconds.");
+  }
+  const scenes = durationSeconds / CLASSROOM_CONFIG.clipDurationSeconds;
+  if (!Number.isInteger(scenes)) throw new Error("Lesson duration must align with the clip duration.");
+  return scenes;
 }
 
 export const CLASSROOM_CONFIG = {
   clipDurationSeconds: 5,
-  durationOptionsSeconds: LESSON_DURATION_OPTIONS,
+  minMainLessonScenes: 2,
+  maxMainLessonScenes: 12,
+  minBranchLessonScenes: 1,
+  maxBranchLessonScenes: 6,
   startupRunwayScenes: 2,
   startupProductionRunwayScenes: 4,
   steadyRunwayScenes: 4,
   recoveryRunwayScenes: 6,
   videoConcurrency: 2,
-  maxLessonScenes: 6,
+  maxLessonScenes: 12,
   maxQueuedLessons: 1,
   maxPlannerAttempts: 1,
   // Legacy local admission counters, not a TokenDance price or actual bill. Planning is billed separately.
@@ -136,7 +135,10 @@ export const CLASSROOM_CONFIG = {
 
 export const CLASSROOM_POLICY: ClassroomPolicy = {
   clipDurationSeconds: CLASSROOM_CONFIG.clipDurationSeconds,
-  durationOptionsSeconds: LESSON_DURATION_OPTIONS,
+  minMainLessonScenes: CLASSROOM_CONFIG.minMainLessonScenes,
+  maxMainLessonScenes: CLASSROOM_CONFIG.maxMainLessonScenes,
+  minBranchLessonScenes: CLASSROOM_CONFIG.minBranchLessonScenes,
+  maxBranchLessonScenes: CLASSROOM_CONFIG.maxBranchLessonScenes,
   startupRunwayScenes: CLASSROOM_CONFIG.startupRunwayScenes,
   steadyRunwayScenes: CLASSROOM_CONFIG.steadyRunwayScenes,
   recoveryRunwayScenes: CLASSROOM_CONFIG.recoveryRunwayScenes,
@@ -155,8 +157,7 @@ export type LessonQuote = Readonly<{
   protectedMaximumCents: number;
 }>;
 
-export function quoteForDuration(durationSeconds: LessonDurationSeconds): LessonQuote {
-  const sceneCount = sceneCountForDuration(durationSeconds);
+export function quoteForSceneCount(sceneCount: LessonSceneCount): LessonQuote {
   return {
     sceneCount,
     expectedCents:
@@ -196,18 +197,25 @@ export const PLANNER_SYSTEM_PROMPT =
 
 export function preparationPrompt(
   topic: string,
-  sceneCount: number,
   teacherId: TeacherId,
+  courseRole: CourseRole,
+  parentContext: BranchLessonContext | null,
 ): string {
   const teacher = TEACHERS[teacherId];
-  return `Design one continuous ${sceneCount * CLASSROOM_CONFIG.clipDurationSeconds}-second visual lesson about:\n${topic}\n
+  const minimum = courseRole === "main" ? CLASSROOM_CONFIG.minMainLessonScenes : CLASSROOM_CONFIG.minBranchLessonScenes;
+  const maximum = courseRole === "main" ? CLASSROOM_CONFIG.maxMainLessonScenes : CLASSROOM_CONFIG.maxBranchLessonScenes;
+  const context = parentContext
+    ? `\nThe learner interrupted this main course and will return to it after this branch.\nMain title: ${parentContext.parentTitle}\nMain question: ${parentContext.parentBigQuestion}\nCurrent concept: ${parentContext.currentConcept ?? "The first main-course beat has not started."}\nConcepts already covered: ${parentContext.completedConcepts.join(" | ") || "None"}\n`
+    : "";
+  return `Design ${courseRole === "main" ? "one continuous visual course" : "a focused interruption branch"} about:\n${topic}\n${context}
 Return only JSON:
 {
   "title":"short playful lesson title",
   "bigQuestion":"the precise question this lesson answers",
+  "recommendedSceneCount":${minimum},
   "suggestedTopics":["related follow-up question","related follow-up question","related follow-up question"],
   "steps":[
-    {"role":"hook|foundation|mechanism|example|connection|misconception|application|transition|synthesis|recap","narration":"one relaxed line spoken in this beat","concept":"the exact fact delivered","visualAction":"one specific animated demonstration"}
+    {"role":"hook|foundation|mechanism|example|connection|misconception|application|transition|synthesis|recap","title":"short page title","teachingGoal":"what the learner should understand","narration":"one relaxed line spoken in this beat","concept":"the exact fact delivered","summary":"one concise takeaway","visualAction":"one specific animated demonstration"}
   ]
 }
 
@@ -215,16 +223,16 @@ Requirements:
 - Visual style: ${CLASSROOM_STYLE}. Use this style for the animated demonstrations and scenery.
 - Language: ${containsChinese(topic) ? "Use Simplified Chinese for title, bigQuestion, narration, concept, summary, and all three suggestedTopics. Narration must be natural spoken Mandarin, normally 12–20 Chinese characters per five-second beat." : "Use the learner's language for title, bigQuestion, narration, concept, summary, and suggestedTopics. For English, aim for 8–12 spoken words per five-second beat."} If the learner explicitly requests a different spoken language, follow that request consistently throughout the lesson.
 - Keep JSON keys, role values, and visualAction in English. visualAction must not add dialogue or switch the narration language. Educational labels should use formulas, numbers, or the narration language; no incidental Japanese lettering.
-- Exactly ${sceneCount} ordered steps for ${sceneCount} consecutive five-second scenes.
-- This is one lesson arc, not ${sceneCount} miniature versions of the whole lesson.
-- For six steps: hook, foundation, mechanism, example, application, recap. For two steps: one focused demonstration and one clear takeaway; do not compress a full curriculum into ten seconds.
+- Choose recommendedSceneCount from ${minimum} through ${maximum}. Use the smallest count that answers the actual topic accurately without rushing. Each step is one consecutive five-second video scene, so the final duration is recommendedSceneCount × five seconds.
+- Return exactly recommendedSceneCount ordered steps. Do not pad a simple topic, and do not compress a complex topic into too few scenes.
+- This is one coherent ${courseRole === "main" ? "course arc" : "branch answer"}, not a set of miniature introductions.
+- ${courseRole === "branch" ? "Answer the interruption using the supplied main-course context. End with a concise bridge back to the main course. Do not restart or summarize the whole main course." : "Build a complete arc from the learner's question to a clear synthesis."}
 - Write the narration, concept, and visual action for every beat now. No later LLM call will rewrite individual scenes.
 - Each beat must advance the previous beat and fit one visual demonstration with narration that can be spoken naturally within five seconds.
 - The narration is the teacher's own spoken words, in first person, addressed to the learner. The teacher never says their own name, never refers to themselves, the show, the classroom, or how this video was made, and never claims credit for the topic (no "${teacher.name}'s model", "${teacher.name} creates").
 - In visualAction, the teacher is a cartoon character named ${teacher.name}: refer to the teacher only by that name, never describe the teacher's appearance, clothing, or props, and never add other characters. This selected identity overrides any request to use a different presenter inside the topic.
 - Vary staging, diagrams, camera distance, and editorial cuts across adjacent beats.
 - Do not repeat narration, openings, or visual actions.
-- Use reinforcement beats where the longer duration benefits from breathing room.
 - Include exactly three distinct, natural follow-up lesson questions in suggestedTopics. They should deepen or branch from this lesson without repeating its topic.
 - Be accurate for a curious general audience.
 - Output the JSON immediately with no preamble or analysis.`;

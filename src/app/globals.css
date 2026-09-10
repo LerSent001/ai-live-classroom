@@ -34,6 +34,58 @@ textarea:focus { box-shadow: inset 0 0 0 3px var(--pink); }
 textarea:disabled { cursor: not-allowed; opacity: .55; }
 code, pre { font-family: var(--mono); }
 
+.tokenpay-wallet-chip,
+.tokenpay-wallet-panel {
+  position: fixed;
+  z-index: 80;
+  color: var(--white);
+  font-size: 13px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
+}
+.tokenpay-wallet-chip {
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 250, 253, .28);
+  border-radius: 999px;
+  background: rgba(18, 20, 27, .76);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+.tokenpay-wallet-chip:hover { border-color: var(--pink); background: rgba(18, 20, 27, .92); }
+.tokenpay-wallet-chip > span { width: 7px; height: 7px; border-radius: 50%; background: #53e292; box-shadow: 0 0 8px rgba(83, 226, 146, .72); }
+.tokenpay-wallet-panel {
+  top: 16px;
+  right: 16px;
+  width: min(285px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(255, 250, 253, .16);
+  border-radius: 16px;
+  background: rgba(18, 20, 27, .94);
+  backdrop-filter: blur(14px);
+}
+.tokenpay-wallet-panel-connected { top: auto; right: auto; bottom: 16px; left: 16px; }
+.tokenpay-wallet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tokenpay-wallet-close { padding: 3px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.tokenpay-wallet-close:hover { color: var(--white); }
+.tokenpay-wallet-status { margin: 8px 0; }
+.tokenpay-wallet-note { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+.tokenpay-wallet-actions { display: flex; gap: 12px; }
+.tokenpay-wallet-actions button,
+.tokenpay-wallet-form button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--pink); background: transparent; color: var(--white); cursor: pointer; }
+.tokenpay-wallet-actions button:hover:not(:disabled),
+.tokenpay-wallet-form button:hover:not(:disabled) { background: var(--pink); color: var(--ink); }
+.tokenpay-wallet-actions button:disabled,
+.tokenpay-wallet-form button:disabled { cursor: default; opacity: .5; }
+.tokenpay-wallet-form { display: grid; gap: 8px; margin-top: 12px; }
+.tokenpay-wallet-form input { width: 100%; padding: 8px; border: 0; border-radius: 6px; background: white; color: #111; font: inherit; }
+.tokenpay-wallet-form button { justify-self: start; }
+.tokenpay-wallet-message { margin: 10px 0 0; color: #ff9ac5; font-size: 11px; line-height: 1.45; }
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -608,8 +660,29 @@ html, body { overflow: hidden; background: #120e15; }
 .guide-aired ul { margin: 0; padding: 0; list-style: none; }
 .guide-aired li { padding: 5px 0; color: var(--panel-muted); font-size: 12px; line-height: 1.4; }
 .guide-add { display: grid; flex: none; gap: 12px; padding-top: 14px; border-top: 2px solid var(--pink); }
+.guide-add-note { margin: 0; color: var(--panel-muted); font-size: 11px; line-height: 1.45; }
 .guide-add input { font: inherit; font-size: 13px; }
 .guide-add input:disabled { opacity: .55; cursor: not-allowed; }
+.courseware-current { padding: 13px 14px; border-left: 4px solid var(--pink); background: rgba(12, 9, 15, .68); }
+.courseware-current-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.courseware-current-head > span { color: var(--pink); font-family: var(--mono); font-size: 10px; }
+.courseware-current > strong { color: var(--panel-ink); font-size: 17px; line-height: 1.25; }
+.courseware-current > p { margin: 0; color: var(--panel-muted); font-size: 12px; line-height: 1.55; }
+.courseware-pages { display: grid; margin: 0; padding: 0; list-style: none; }
+.courseware-pages li { display: flex; gap: 11px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--panel-line); opacity: .62; }
+.courseware-pages li > span { flex: none; color: var(--pink); font-family: var(--mono); font-size: 11px; }
+.courseware-pages li > div { min-width: 0; }
+.courseware-pages p { margin: 0; overflow-wrap: anywhere; color: var(--panel-ink); font-size: 13px; line-height: 1.35; }
+.courseware-pages small { color: var(--panel-muted); font-family: var(--mono); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.courseware-pages .courseware-page-active { opacity: 1; }
+.courseware-pages .courseware-page-active p { color: #ff83b9; }
+.courseware-appendices ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.courseware-appendices li { display: flex; gap: 10px; color: var(--panel-muted); font-size: 12px; line-height: 1.45; }
+.courseware-appendices li > span { color: var(--pink); font-family: var(--mono); }
+.courseware-downloads > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.courseware-downloads a { padding: 9px 11px; border: 1px solid var(--pink); color: var(--panel-ink); font-size: 12px; font-weight: 800; text-decoration: none; }
+.courseware-downloads a:hover { background: var(--pink); color: #120c15; }
+.courseware-downloads > small { color: var(--panel-muted); font-size: 10px; line-height: 1.45; }
 
 /* Broadcast graphics inside the CRT. */
 .tuning-screen { overflow: hidden; background: radial-gradient(circle, rgba(255,255,255,.13) 1px, transparent 1.5px) 0 0 / 8px 8px, #17121c; }
