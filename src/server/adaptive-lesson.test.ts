@@ -3,9 +3,11 @@ import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { preparationPrompt } from "@/lib/classroom-config";
+import { CLASSROOM_CONFIG, preparationPrompt } from "@/lib/classroom-config";
 import { parseLessonPlan, toClassroomSessionId, toCommandId } from "@/lib/classroom-boundaries";
-import { parseInitialLesson } from "./lesson-plan";
+import { compileLessonScene, parseInitialLesson } from "./lesson-plan";
+import { generateTokenDanceVideo } from "./youth-tokenpay-video";
+import type { LessonLedger } from "@/lib/classroom-types";
 import { RecordingStore } from "./recording-store";
 import { SavedClassrooms } from "./saved-classrooms";
 import { YouthRuntimeRegistry } from "./youth-classroom-runtime";
@@ -63,3 +65,65 @@ test("duration, scene count and speech limits are checked before video admission
   assert.equal(legacy.durationSeconds, 30); assert.equal(legacy.steps.length, 6);
   assert.match(preparationPrompt(topic, 6, teacherId), /Exactly 6 ordered steps/);
 });
+
+for (const duration of [15, 20, 25, 30] as const) {
+  test(`${duration}s exposes the first two clips while later renders are still pending`, async () => {
+    let plans = 0, jobs = 0, maxJobs = 0;
+    const pending: ReturnType<typeof Promise.withResolvers<void>>[] = [];
+    const registry = new YouthRuntimeRegistry({ get: () => "not-a-real-key", revision: () => 0 }, () => null, {
+      plan: async () => { plans++; return output(duration); },
+      video: async () => {
+        const receipt = pending.length + 1;
+        const deferred = Promise.withResolvers<void>(); pending.push(deferred);
+        maxJobs = Math.max(maxJobs, ++jobs);
+        await deferred.promise; jobs--;
+        return { providerUrl: `https://example.invalid/${receipt}.mp4`, expandedPrompt: null, queueLogs: [], timings: { requestId: `fixture-${receipt}`, queueWaitMs: null, inferenceMs: null, totalMs: 1 } };
+      },
+    });
+    const runtime = registry.get(owner), id = toClassroomSessionId(`streaming-${duration}`);
+    runtime.create({ sessionId: id });
+    runtime.command(id, { kind: "start", id: toCommandId(`stream-start-${duration}`), topic, teacherId, durationSeconds: 30, atMs: 1 });
+    await waitFor(() => pending.length === 2);
+    pending[1].resolve(); await waitFor(() => pending.length === 3);
+    assert.equal(runtime.view(id)?.ready.length, 0, "out-of-order scene 2 must not skip unfinished scene 1");
+    pending[0].resolve(); await waitFor(() => runtime.view(id)?.ready.length === 2);
+    const first = runtime.view(id)!;
+    assert.equal(first.policy.startupRunwayScenes, 2);
+    assert.ok(first.scenes.some(scene => scene.kind === "generating"));
+    assert.ok(first.ready.length < first.lesson!.targetSceneCount, "startup must not await the whole map");
+    runtime.command(id, { kind: "report-playback", id: toCommandId(`stream-play-${duration}`), report: { kind: "started", sceneId: first.ready[0]!.id, atMs: 10 } });
+    assert.equal(runtime.view(id)?.playback.kind, "playing");
+    for (let n = 2; n < duration / 5; n++) {
+      await waitFor(() => pending.length > n); pending[n].resolve();
+    }
+    await waitFor(() => runtime.view(id)?.scenes.every(scene => scene.kind !== "generating") === true);
+    assert.equal(plans, 1); assert.equal(pending.length, duration / 5);
+    assert.equal(maxJobs, CLASSROOM_CONFIG.videoConcurrency);
+  });
+
+  test(`${duration}s planned beats arrive verbatim in the actual video POST body`, async () => {
+    const lesson = parseInitialLesson({ topic, teacherId, durationSeconds: 30, adaptiveOpening: true, output: output(duration), latencyMs: 0, preparedBy: "local-fixture" });
+    let ledger: LessonLedger = { nextStepIndex: 0, conceptsPlanned: [], recentNarrations: [], recentVisuals: [] };
+    let submits = 0;
+    for (const step of lesson.steps) {
+      const scene = compileLessonScene({ lesson, ledger, sceneNumber: step.position, purpose: { kind: "lesson", stepId: step.id } });
+      ledger = scene.ledgerAfter;
+      await generateTokenDanceVideo({ prompt: scene.prompt, apiKey: "not-a-real-key" }, {
+        request: async (_url, init) => {
+          if (init?.method === "POST") {
+            submits++;
+            const body = JSON.parse(String(init.body));
+            assert.equal(body.duration, 5);
+            assert.equal(body.content[0].text, scene.prompt);
+            assert.ok(body.content[0].text.includes(`Five-second 16:9 scene ${step.position}`));
+            assert.ok(body.content[0].text.includes(step.visualAction.replace(/\.$/, "")));
+            assert.ok(body.content[0].text.includes(`"${step.narration}"`));
+            return Response.json({ task_id: `local-receipt-${submits}` });
+          }
+          return Response.json({ task: { status: "succeeded", content: { url: "https://example.invalid/local.mp4" } } });
+        },
+      });
+    }
+    assert.equal(submits, duration / 5);
+  });
+}

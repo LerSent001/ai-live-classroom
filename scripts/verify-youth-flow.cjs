@@ -14,16 +14,19 @@ const base = process.env.YOUTH_TEST_URL || 'http://127.0.0.1:3028';
 const openingSeconds = Number(process.env.YOUTH_OPENING_SECONDS || 30);
 assert.ok([15, 20, 25, 30].includes(openingSeconds));
 const cached = process.env.YOUTH_CACHED_MEDIA === '1';
+const streaming = process.env.YOUTH_STREAMING_QA === '1';
 const cache = cached ? new SavedClassrooms(path.resolve('recordings')).load('classroom-fb4fde11-6d8c-4dbe-a096-bc7c561cc906') : null;
 const cacheFiles = cache?.lessons.flatMap(lesson => lesson.scenes.map((_, n) => path.resolve('recordings', lesson.recordingId, `scene-${String(n + 1).padStart(2, '0')}.mp4`)));
 const hashes = cacheFiles?.map(file => require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex'));
-const out = path.resolve(cached ? `output/youth-cached-adaptive-${openingSeconds}` : 'output/youth-flow-qa');
+const out = path.resolve((cached ? `output/youth-cached-adaptive-${openingSeconds}` : 'output/youth-flow-qa') + (streaming ? '-streaming' : ''));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'youth-browser-flow-'));
 fs.mkdirSync(out, { recursive: true });
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', args: ['--enable-gpu', '--use-angle=metal', '--disable-background-networking'] });
   let clip, plans = 0, videos = 0, jobs = 0, maxJobs = 0, rootId;
+  const firstPlayback = Promise.withResolvers();
+  let initialReadyCount = null, awaitingAtFirstPlayback = null;
   const commands = [], playback = [], errors = [], blockedExternal = [];
   const store = new RecordingStore(temporary, 'local-no-spend-browser-fixture');
   const registry = new YouthRuntimeRegistry({ get: () => 'FAKE-KEY-NOT-A-REAL-WALLET', revision: () => 0 }, () => store, {
@@ -40,6 +43,9 @@ fs.mkdirSync(out, { recursive: true });
       assert.equal(input.resumeRequestId, undefined);
       const requestId = `local-fixture-video-${++videos}`; input.onSubmitted?.(requestId);
       jobs++; maxJobs = Math.max(maxJobs, jobs);
+      // Deliberately hold the rest of the opening until the first two actually
+      // play. Waiting for a complete lesson would deadlock this no-spend test.
+      if (streaming && videos > 2) await firstPlayback.promise;
       await new Promise(resolve => setTimeout(resolve, 100)); jobs--;
       return { providerUrl: `${base}/__fixture__/encoded-${Number(requestId.split('-').at(-1))}.${cached ? 'mp4' : 'webm'}`, expandedPrompt: null, queueLogs: [], timings: { requestId, queueWaitMs: null, inferenceMs: null, totalMs: 100 } };
     },
@@ -68,7 +74,15 @@ fs.mkdirSync(out, { recursive: true });
       const input = parseCreateClassroomRequest(request.postDataJSON()); rootId = input.sessionId; snapshot = runtime.create(input);
     } else if (request.method() === 'POST') {
       const command = parseClassroomCommand(request.postDataJSON()); commands.push(command.kind);
-      if (command.kind === 'report-playback') playback.push(command.report);
+      if (command.kind === 'report-playback') {
+        playback.push(command.report);
+        if (command.report.kind === 'started' && initialReadyCount === null) {
+          const state = runtime.view(rootId);
+          initialReadyCount = state.ready.length;
+          awaitingAtFirstPlayback = state.scenes.filter(scene => scene.kind === 'generating').length;
+          firstPlayback.resolve();
+        }
+      }
       snapshot = runtime.command(rootId, command)?.snapshot;
     } else snapshot = runtime.view(rootId);
     return route.fulfill({ json: { ok: true, outcome: { kind: 'snapshot', snapshot } } });
@@ -100,12 +114,16 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(state.metrics.skippedScenes, 0); assert.equal(activations.length, expectedClips);
     assert.equal(new Set(activations.map(r => r.kind === 'started' ? r.sceneId : r.startedSceneId)).size, expectedClips);
     assert.equal(state.warning, null); assert.deepEqual(errors, []); assert.deepEqual(blockedExternal, []);
+    if (streaming) {
+      assert.equal(initialReadyCount, 2);
+      assert.ok(awaitingAtFirstPlayback > 0, 'First two clips must start while the remaining opening is still generating');
+    }
     const elapsedSeconds = (playback.findLast(r => r.kind === 'drained').atMs - activations[0].atMs) / 1000;
     assert.ok(elapsedSeconds >= openingSeconds + 17 && elapsedSeconds < openingSeconds + 45, 'All real-duration media clips actually play');
     if (cached) assert.deepEqual(cacheFiles.map(file => require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex')), hashes);
     await page.screenshot({ path: path.join(out, 'complete-local-fixture.png') });
     const result = { verified: true, evidence: cached ? 'actual runtime, mock planning/generation, ORIGINAL cached MP4s as media test assets; NOT a newly generated lesson' : 'actual runtime with in-memory providers and locally encoded media ONLY', providerCalls: 0,
-      cachedFilesUnchanged: cached ? true : undefined, plannedLessons: plans, videoSubmissions: videos, maxConcurrentJobs: maxJobs, nominalPathSeconds: [openingSeconds, 10, 10], playbackActivations: activations.length, elapsedSeconds, errors };
+      cachedFilesUnchanged: cached ? true : undefined, streamingStartupVerified: streaming, initialReadyCount, awaitingAtFirstPlayback, plannedLessons: plans, videoSubmissions: videos, maxConcurrentJobs: maxJobs, nominalPathSeconds: [openingSeconds, 10, 10], playbackActivations: activations.length, elapsedSeconds, errors };
     fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     await page.screenshot({ path: path.join(out, 'failed.png') });

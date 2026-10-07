@@ -53,7 +53,6 @@ export class YouthRuntimeRegistry {
       configured: () => keyForRequest() !== null,
       fixture: () => false,
       generateWithoutPlayback: true,
-      waitForWholeLesson: true,
       onUpdate: snapshot => {
         if (budgetTracked.has(snapshot.id) && snapshot.lesson && snapshot.scenes.length === snapshot.lesson.targetSceneCount && snapshot.scenes.every(scene => (scene.kind === "ready" || scene.kind === "playing" || scene.kind === "played") && scene.segment.kind === "generated") && !budgetSettled.has(snapshot.id)) {
           budgetSettled.add(snapshot.id);

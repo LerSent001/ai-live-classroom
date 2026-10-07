@@ -72,3 +72,29 @@ test("a late actual quote cannot revive a cancelled reservation", async () => {
   await assert.rejects(guard.reserve("opening", "key", { ...lesson, durationSeconds: 15, phase: "lesson" }), /已取消/);
   guard.finish("opening");
 });
+
+test("shrinking a planned map does not read prices or balance again and retains its conservative allowance", async () => {
+  let reads = 0;
+  const fixture = request(20);
+  const guard = new YouthBudgetGuard(async (...args) => { reads++; return fixture(...args); });
+  const ceiling = await guard.reserve("opening", "key", { ...lesson, adaptiveOpening: true });
+  const initialReads = reads;
+  for (const durationSeconds of [25, 20, 15] as const) {
+    const actual = await guard.reserve("opening", "key", { ...lesson, durationSeconds, phase: "lesson" });
+    assert.equal(reads, initialReads);
+    assert.equal(actual.quotedAt, ceiling.quotedAt);
+    assert.equal(actual.videoRateCny, ceiling.videoRateCny);
+    const minimum = await quoteYouthLesson({ ...lesson, durationSeconds, adaptiveOpening: true }, fixture);
+    assert.ok(actual.amountCny >= minimum.amountCny, "rounding must not shrink below the full fee allowance");
+  }
+});
+
+test("local map adjustment cannot increase the ceiling, switch wallets or recreate a released reservation", async () => {
+  const guard = new YouthBudgetGuard(request(20));
+  await guard.reserve("opening", "key", lesson);
+  await assert.rejects(guard.reserve("opening", "other-key", { ...lesson, phase: "lesson" }), /已取消/);
+  await guard.reserve("opening", "key", { ...lesson, durationSeconds: 15, phase: "lesson" });
+  await assert.rejects(guard.reserve("opening", "key", { ...lesson, phase: "lesson" }), /超出/);
+  guard.complete("opening");
+  await assert.rejects(guard.reserve("opening", "key", { ...lesson, phase: "lesson" }), /已取消/);
+});

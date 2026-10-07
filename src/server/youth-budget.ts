@@ -60,13 +60,25 @@ export class YouthBudgetGuard {
     await predecessor;
     try {
       const existing = this.reservations.get(id);
-      if (existing && input.phase !== "lesson") return existing.quote;
-      const [balance, quote] = await Promise.all([readBalance(key, this.request), quoteYouthLesson(input, this.request)]);
       const keyHash = createHash("sha256").update(key).digest("hex");
-      if (existing && (existing.keyHash !== keyHash || existing.closed || existing.uncertain)) throw new Error("课程预算已取消或状态未知，未提交付费请求。");
+      if (input.phase === "lesson") {
+        // The admitted ceiling already covers this shorter map. Shrink locally,
+        // preserving the planner allowance and original price timestamp; do not
+        // add another network round-trip between planning and the first render.
+        if (!existing || existing.keyHash !== keyHash || existing.closed || existing.uncertain) throw new Error("课程预算已取消或状态未知，未提交付费请求。");
+        if (input.durationSeconds > existing.quote.durationSeconds) throw new Error("实际课程超出已核验预算，未提交付费请求。");
+        const released = (existing.quote.durationSeconds - input.durationSeconds) * existing.quote.videoRateCny * 1.1;
+        const amountCny = Math.min(existing.quote.amountCny, Math.ceil((existing.quote.amountCny - released) * 100) / 100);
+        const quote = { ...existing.quote, durationSeconds: input.durationSeconds, amountCny };
+        this.reservations.set(id, { ...existing, quote });
+        return quote;
+      }
+      if (existing && existing.keyHash !== keyHash) throw new Error("课程预算身份不匹配，未提交付费请求。");
+      if (existing) return existing.quote;
+      const [balance, quote] = await Promise.all([readBalance(key, this.request), quoteYouthLesson(input, this.request)]);
       const held = [...this.reservations.entries()].filter(([otherId, r]) => otherId !== id && r.keyHash === keyHash).reduce((sum, [, r]) => sum + r.quote.amountCny, 0);
       if (balance - held < quote.amountCny) throw new Error(`余额不足以完成本节 ${input.durationSeconds} 秒课程：保守预算 ¥${quote.amountCny.toFixed(2)}（含余量），可用余额 ¥${Math.max(0, balance - held).toFixed(2)}。${input.phase === "lesson" ? "脚本已保存，未提交视频生成；请核对钱包状态。" : "未提交付费请求。"}`);
-      this.reservations.set(id, existing ? { ...existing, quote } : { keyHash, quote, pending: 0, closed: false, uncertain: false });
+      this.reservations.set(id, { keyHash, quote, pending: 0, closed: false, uncertain: false });
       return quote;
     } catch (error) {
       if (error instanceof Error && /未提交付费请求|未提交视频生成/.test(error.message)) throw error;

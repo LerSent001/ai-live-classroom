@@ -79,7 +79,6 @@ export type ClassroomRuntimeDependencies = Readonly<{
   clear(sessionId: ClassroomSessionId): Promise<void>;
   /** Fully generate only the selected segment, even if no browser is playing. */
   generateWithoutPlayback?: boolean;
-  waitForWholeLesson?: boolean;
   onUpdate?(snapshot: ClassroomSnapshot): void;
 }>;
 
@@ -736,7 +735,7 @@ export class ClassroomRuntime {
       hasPlaybackBegun: session.hasPlaybackBegun,
       committedThrough: committedThrough(session),
       scenes: ordered,
-      ready: this.dependencies.waitForWholeLesson && (session.production.kind === "teaching" || activeVideoJobs(session) > 0) ? [] : readySegments(session),
+      ready: readySegments(session),
       playing: playingSegment(session),
       currentPrompt: promptOf(playingScene),
       nextPrompt: promptOf(nextScene),
