@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { RecordingStore, type RecordedScene } from "@/server/recording-store";
-import { requestTokenPayPlan } from "@/server/tokenpay-planner";
+import { requestTokenDancePlan } from "@/server/youth-tokenpay-planner";
 
 const scene: RecordedScene = {
   teacherId: "monomi",
@@ -18,11 +18,13 @@ test("actual request and public response survive a new store instance without au
   t.after(() => rm(root, { recursive: true, force: true }));
   const store = new RecordingStore(root);
   const order: string[] = [];
-  await requestTokenPayPlan({ apiKey: "secret-test-key", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => {
+  await requestTokenDancePlan({ apiKey: "secret-test-key", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => {
     order.push(kind); store.record(scene.sessionId, kind, data);
   } }, async () => {
     assert.deepEqual(order, ["planner-request"]);
-    return Response.json({ usage: { total_tokens: 42 }, choices: [{ message: { reasoning_content: "private-thought", content: '{"title":"重力"}' } }] });
+    return Response.json({ usage: { total_tokens: 42 }, choices: [{ message: {
+      reasoning_content: "private-thought", content: '{"title":"重力"}',
+    } }] });
   });
   new RecordingStore(root).record(scene.sessionId, "video-failed", { requestId: "mock-request-1", message: "HTTP 503", actualBilledCost: null });
   const text = await readFile(join(root, scene.sessionId, "events.jsonl"), "utf8");
@@ -30,7 +32,7 @@ test("actual request and public response survive a new store instance without au
   assert.deepEqual(events.map((e) => e.kind), ["planner-request", "planner-response", "video-failed"]);
   assert.equal(events[1].data.usage.total_tokens, 42);
   assert.equal(events[2].data.actualBilledCost, null);
-  assert.doesNotMatch(text, /secret-test-key|private-thought|x-goog-api-key/);
+  assert.doesNotMatch(text, /secret-test-key|private-thought|Authorization/);
 });
 
 test("download failure retains scene metadata and records the failure; success saves actual bytes", async (t) => {
@@ -40,17 +42,18 @@ test("download failure retains scene metadata and records the failure; success s
   store.saveSceneMetadata(scene);
   const logs: string[] = [];
   t.mock.method(console, "error", (...args: unknown[]) => logs.push(args.join(" ")));
-  await store.saveVideo(scene, async () => new Response("gone", { status: 503 }));
+  await store.saveVideo(scene, async () => new Response("gone", { status: 503 }), { sleep: async () => {} });
   const metadata = JSON.parse(await readFile(join(root, scene.sessionId, "scene-01.json"), "utf8"));
   assert.equal(metadata.timings.requestId, "mock-request-1");
   assert.equal(metadata.prompt, scene.prompt);
   assert.equal(metadata.teacherId, "monomi");
   assert.equal(metadata.actualBilledCost, null);
   assert.match(await readFile(join(root, scene.sessionId, "events.jsonl"), "utf8"), /video-save-failed/);
-  assert.ok(logs.some((line) => line.includes("503")));
+  assert.ok(logs.some((line) => line.includes("usable media")));
   await assert.rejects(readFile(join(root, scene.sessionId, "scene-01.mp4")), /ENOENT/);
-  await store.saveVideo(scene, async () => new Response("mock-video-bytes"));
-  assert.equal(await readFile(join(root, scene.sessionId, "scene-01.mp4"), "utf8"), "mock-video-bytes");
+  const bytes = Buffer.from([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0]);
+  await store.saveVideo(scene, async () => new Response(bytes));
+  assert.deepEqual(await readFile(join(root, scene.sessionId, "scene-01.mp4")), bytes);
 });
 
 test("unwritable recording boundary blocks the provider before any call", async (t) => {
@@ -60,7 +63,7 @@ test("unwritable recording boundary blocks the provider before any call", async 
   await writeFile(blocked, "file");
   const store = new RecordingStore(blocked);
   let calls = 0;
-  await assert.rejects(requestTokenPayPlan({ apiKey: "mock", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => store.record(scene.sessionId, kind, data) }, async () => {
+  await assert.rejects(requestTokenDancePlan({ apiKey: "mock", prompt: "重力", systemPrompt: "JSON", record: (kind, data) => store.record(scene.sessionId, kind, data) }, async () => {
     calls += 1; throw new Error("must not call");
   }), /Cannot save/);
   assert.equal(calls, 0);

@@ -311,11 +311,11 @@ test("provider failure stops new clips and cancels a selected but unstarted foll
   assert.equal(harness.prepareCalls.length, 1);
 });
 
-test("Gemini preparation failure never admits an H3 clip", async () => {
-  const harness = createHarness({ preparation: Promise.resolve({ ok: false, message: "Gemini status 429", plannerAttemptsUsed: 1 }) });
-  const sessionId = toClassroomSessionId("classroom-gemini-failure");
+test("TokenDance preparation failure never admits an H3 clip", async () => {
+  const harness = createHarness({ preparation: Promise.resolve({ ok: false, message: "TokenDance status 429", plannerAttemptsUsed: 1 }) });
+  const sessionId = toClassroomSessionId("classroom-planner-failure");
   harness.runtime.create({ sessionId });
-  harness.runtime.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("gemini-failure-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
+  harness.runtime.command(sessionId, { kind: "start", teacherId: "monokuma", id: toCommandId("planner-failure-start"), topic: "Why does the Moon have phases?", durationSeconds: 30, atMs: 1 });
   await waitFor(() => harness.runtime.view(sessionId)?.phase === "complete");
   assert.equal(harness.prepareCalls.length, 1);
   assert.equal(harness.renders.length, 0);

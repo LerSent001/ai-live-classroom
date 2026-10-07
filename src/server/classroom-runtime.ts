@@ -77,6 +77,10 @@ export type ClassroomRuntimeDependencies = Readonly<{
     plan: ValidatedScenePlan;
   }): Promise<RenderResult>;
   clear(sessionId: ClassroomSessionId): Promise<void>;
+  /** Fully generate only the selected segment, even if no browser is playing. */
+  generateWithoutPlayback?: boolean;
+  waitForWholeLesson?: boolean;
+  onUpdate?(snapshot: ClassroomSnapshot): void;
 }>;
 
 function newSceneId(number: number): SceneId {
@@ -177,6 +181,7 @@ function promptOf(scene: SceneView | undefined): Prompt | null {
 }
 
 export class ClassroomRuntime {
+  private readonly runtimeId = randomUUID();
   private readonly sessions = new Map<ClassroomSessionId, InternalSession>();
 
   constructor(private readonly dependencies: ClassroomRuntimeDependencies) {}
@@ -244,6 +249,39 @@ export class ClassroomRuntime {
     return this.snapshot(session);
   }
 
+  /** Restore receipts, not provider submissions. Missing shots remain explicit
+   * failures; only the supplied read-only result collectors may run. */
+  restore(sessionId: ClassroomSessionId, lesson: LessonPlan, jobs: readonly {
+    plan: ValidatedScenePlan; collect(): Promise<RenderResult>;
+  }[]): ClassroomSnapshot {
+    this.create({ sessionId });
+    const session = this.sessions.get(sessionId)!;
+    session.epoch++;
+    session.topic = lesson.topic;
+    session.teacherId = lesson.teacherId;
+    session.lesson = lesson;
+    session.production = { kind: "draining", reason: "lesson-complete" };
+    session.playback = { kind: "priming" };
+    session.scenes = jobs.map(({ plan }) => ({ kind: "generating", id: newSceneId(plan.sceneNumber), number: plan.sceneNumber, plan, effectId: newEffectId(), startedAtMs: Date.now() }));
+    this.touch(session);
+    for (const [index, job] of jobs.entries()) {
+      const scene = session.scenes[index];
+      if (scene?.kind === "generating") void this.render(sessionId, session.epoch, scene.id, scene.effectId, job.plan, job.collect);
+    }
+    return this.snapshot(session);
+  }
+
+  restoreFailure(sessionId: ClassroomSessionId, topic: string, teacherId: TeacherId): void {
+    this.create({ sessionId });
+    const session = this.sessions.get(sessionId)!;
+    session.topic = topic;
+    session.teacherId = teacherId;
+    session.production = { kind: "draining", reason: "planning-failed" };
+    session.playback = { kind: "ended", finalSceneNumber: null };
+    session.warning = "服务重启前的脚本没有完整保存，无法自动接续。请核对原记录；没有重新提交任何付费请求。";
+    this.touch(session);
+  }
+
   command(sessionId: ClassroomSessionId, command: ClassroomCommand): CommandOutcome | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
@@ -274,10 +312,10 @@ export class ClassroomRuntime {
     return outcome;
   }
 
-  async clear(sessionId: ClassroomSessionId): Promise<boolean> {
+  async clear(sessionId: ClassroomSessionId, abandon = false): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) return true;
-    if (lessonIsBusy(session)) return false;
+    if (!abandon && lessonIsBusy(session)) return false;
     session.epoch += 1;
     this.sessions.delete(sessionId);
     await this.dependencies.clear(sessionId);
@@ -297,7 +335,7 @@ export class ClassroomRuntime {
       return { kind: "snapshot", snapshot: this.snapshot(session) };
     }
     if (!this.dependencies.configured()) {
-      session.warning = "请先在右上角连接自己的 TokenPay 钱包。";
+      session.warning = "Course generation is not configured. Connect your TokenDance wallet or configure the legacy Demo provider keys.";
       this.log(session, "error", session.warning, atMs);
       this.touch(session);
       return { kind: "snapshot", snapshot: this.snapshot(session) };
@@ -465,14 +503,6 @@ export class ClassroomRuntime {
           return;
         }
 
-        const target = session.hasPlaybackBegun
-          ? session.playback.kind === "buffering"
-            ? CLASSROOM_CONFIG.recoveryRunwayScenes
-            : CLASSROOM_CONFIG.steadyRunwayScenes
-          : CLASSROOM_CONFIG.startupProductionRunwayScenes;
-        const locked = session.scenes.filter(isLockedFuture).length;
-        if (locked >= target || activeVideoJobs(session) >= CLASSROOM_CONFIG.videoConcurrency) return;
-
         if (session.ledger.nextStepIndex >= session.lesson.steps.length) {
           session.production = { kind: "draining", reason: "lesson-complete" };
           this.log(session, "info", "All lesson beats are committed.", Date.now());
@@ -480,6 +510,13 @@ export class ClassroomRuntime {
           this.maybeClose(session);
           return;
         }
+        const target = this.dependencies.generateWithoutPlayback ? session.lesson.targetSceneCount : session.hasPlaybackBegun
+          ? session.playback.kind === "buffering"
+            ? CLASSROOM_CONFIG.recoveryRunwayScenes
+            : CLASSROOM_CONFIG.steadyRunwayScenes
+          : CLASSROOM_CONFIG.startupProductionRunwayScenes;
+        const locked = session.scenes.filter(isLockedFuture).length;
+        if (locked >= target || activeVideoJobs(session) >= CLASSROOM_CONFIG.videoConcurrency) return;
 
         const step = session.lesson.steps[session.ledger.nextStepIndex];
         if (!step) return;
@@ -544,11 +581,12 @@ export class ClassroomRuntime {
     sceneId: SceneId,
     effectId: EffectId,
     plan: ValidatedScenePlan,
+    collect?: () => Promise<RenderResult>,
   ): Promise<void> {
     const startedAtMs = Date.now();
     let result: RenderResult;
     try {
-      result = await this.dependencies.render({ sessionId, sceneId, plan });
+      result = await (collect ? collect() : this.dependencies.render({ sessionId, sceneId, plan }));
     } catch (error) {
       result = {
         ok: false,
@@ -673,6 +711,7 @@ export class ClassroomRuntime {
 
   private touch(session: InternalSession): void {
     session.version += 1;
+    this.dependencies.onUpdate?.(this.snapshot(session));
   }
 
   private snapshot(session: InternalSession): ClassroomSnapshot {
@@ -683,6 +722,7 @@ export class ClassroomRuntime {
     );
     return {
       id: session.id,
+      runtimeId: this.runtimeId,
       teacherId: session.teacherId,
       version: session.version,
       epoch: session.epoch,
@@ -696,7 +736,7 @@ export class ClassroomRuntime {
       hasPlaybackBegun: session.hasPlaybackBegun,
       committedThrough: committedThrough(session),
       scenes: ordered,
-      ready: readySegments(session),
+      ready: this.dependencies.waitForWholeLesson && (session.production.kind === "teaching" || activeVideoJobs(session) > 0) ? [] : readySegments(session),
       playing: playingSegment(session),
       currentPrompt: promptOf(playingScene),
       nextPrompt: promptOf(nextScene),

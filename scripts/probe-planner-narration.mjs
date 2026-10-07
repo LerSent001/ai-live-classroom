@@ -1,33 +1,21 @@
-// Runs ONE paid Gemini planning request using the same prompt as the app.
-// Usage: node --experimental-strip-types scripts/probe-planner-narration.mjs "topic" [monokuma|monomi]
+// Offline narration inspection only: never reads a key or submits a model request.
+// Usage: node --import tsx scripts/probe-planner-narration.mjs <saved-script.json> [monokuma|monomi]
 import { readFileSync } from "node:fs";
-import { DEFAULT_TEACHER_ID, TEACHERS, LESSON_PLANNER_CONFIG, PLANNER_SYSTEM_PROMPT, preparationPrompt } from "../src/lib/classroom-config.ts";
-const topic = process.argv[2] ?? "讲讲重力的原理";
+import { DEFAULT_TEACHER_ID, TEACHERS } from "../src/lib/classroom-config.ts";
+
+const file = process.argv[2];
+if (!file || file.startsWith("--")) throw new Error("Provide a saved script JSON file. This tool never generates a new script.");
 const teacherId = process.argv[3] ?? DEFAULT_TEACHER_ID;
 if (teacherId !== "monokuma" && teacherId !== "monomi") throw new Error("Unknown teacher ID");
+const payload = JSON.parse(readFileSync(file, "utf8"));
+const plan = typeof payload.output === "string" ? JSON.parse(payload.output) : payload.lesson ?? payload;
+if (!Array.isArray(plan.steps)) throw new Error("Saved script has no steps");
 const teacherName = TEACHERS[teacherId].name;
-const env = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-const key = env.match(/^GEMINI_API_KEY=(.+)$/m)?.[1]?.trim();
-if (!key) throw new Error("GEMINI_API_KEY missing from .env.local");
-const prompt = preparationPrompt(topic, 6, teacherId);
-const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${LESSON_PLANNER_CONFIG.geminiModel}:generateContent`, {
-  method: "POST",
-  headers: { "content-type": "application/json", "x-goog-api-key": key },
-  body: JSON.stringify({
-    systemInstruction: { parts: [{ text: PLANNER_SYSTEM_PROMPT }] },
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.35, responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "minimal" } },
-  }),
-});
-if (!response.ok) throw new Error(`gemini ${response.status}: ${(await response.text()).slice(0, 200)}`);
-const payload = await response.json();
-const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? "";
-const plan = JSON.parse(text);
 let flagged = 0;
-for (const [i, step] of plan.steps.entries()) {
+for (const [index, step] of plan.steps.entries()) {
   const bad = new RegExp(`\\b${teacherName}\\b`).test(step.narration) || /this (video|show|classroom|lesson|channel)|\bI (made|created|generated)\b/i.test(step.narration);
-  if (bad) flagged += 1;
-  console.log(`${String(i + 1).padStart(2)}. ${step.narration}${bad ? "   <-- FLAG" : ""}`);
+  if (bad) flagged++;
+  console.log(`${String(index + 1).padStart(2)}. ${step.narration}${bad ? "   <-- FLAG" : ""}`);
   console.log(`    visual: ${step.visualAction}`);
 }
-console.log(`\nflagged narration lines: ${flagged}/${plan.steps.length}`);
+console.log(`flagged narration lines: ${flagged}/${plan.steps.length}; provider requests: 0`);

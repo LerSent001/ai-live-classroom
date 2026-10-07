@@ -6,9 +6,9 @@ export type EffectId = string & { readonly __brand: "EffectId" };
 export type Prompt = string & { readonly __brand: "Prompt" };
 
 export type SceneNumber = number;
-export type LessonDurationSeconds = 10 | 30;
-export type LessonSceneCount = 2 | 6;
-export type TeacherId = "monokuma" | "monomi";
+export type LessonDurationSeconds = 10 | 15 | 20 | 25 | 30;
+export type LessonSceneCount = 2 | 3 | 4 | 5 | 6;
+export type TeacherId = "monokuma" | "monomi" | import("./youth-classroom").YouthTeacherId;
 
 export type CaptionCue = Readonly<{
   startSeconds: number;
@@ -267,7 +267,7 @@ export type ClassroomMetrics = Readonly<{
   generatedScenes: number;
   skippedScenes: number;
   generatedSeconds: number;
-  estimatedSpendCents: number;
+  estimatedSpendCents: number | null;
   latestPlanningMs: number | null;
   latestGenerationMs: number | null;
   averageGenerationMs: number | null;
@@ -286,6 +286,7 @@ export type LogEntry = Readonly<{
 }>;
 
 export type ClassroomSnapshot = Readonly<{
+  runtimeId?: string;
   teacherId: TeacherId;
   id: ClassroomSessionId;
   version: number;

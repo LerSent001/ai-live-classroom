@@ -1,0 +1,194 @@
+.youth-classroom {
+  --youth-ink: #304a3b;
+  position: fixed; inset: 0; overflow: hidden; background: #e7e1d3;
+  color: var(--youth-ink); font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.youth-classroom button, .youth-classroom input, .youth-classroom select { font: inherit; }
+.youth-classroom button { cursor: pointer; }
+.youth-classroom button:disabled { cursor: default; }
+.youth-classroom button:focus-visible, .youth-classroom input:focus-visible, .youth-classroom select:focus-visible { outline: 3px solid #488765; outline-offset: 4px; }
+.youth-scene { position: absolute; inset: 0; }
+.youth-scene canvas { touch-action: none; }
+/* Static readability scrim, above the scene and below controls. No WebGL pass,
+   blur/filter or animation; absent while lessons play. */
+.youth-lobby::after {
+  content: ""; position: absolute; inset: 0; z-index: 12; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0 43%, rgba(7, 10, 15, .12) 53%, rgba(7, 10, 15, .62) 72%, rgba(5, 7, 11, .9) 100%);
+}
+.youth-active::after {
+  content: ""; position: absolute; inset: 0; z-index: 12; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0 calc(100% - 372px), rgba(24, 27, 27, .59) calc(100% - 330px), rgba(19, 22, 22, .88) 100%);
+}
+.youth-composer { position: absolute; z-index: 20; right: 2.6%; bottom: 6.3%; width: min(510px, 41%); }
+.youth-mentor { position: relative; width: min(240px, 24vh); aspect-ratio: 2 / 3; margin: 0 10px 12px auto; pointer-events: none; user-select: none; }
+.youth-mentor-portrait { width: 100%; height: 100%; }
+/* Fade only the lower artwork, never the switch or the input. Static alpha mask:
+   preserve both source PNGs, without blur, animation or another WebGL pass. */
+.youth-mentor-portrait img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0 68%, rgba(0, 0, 0, .85) 78%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0 68%, rgba(0, 0, 0, .85) 78%, transparent 100%);
+}
+.youth-composer h1 { margin: 0 0 16px 14px; color: #fffefa; font-size: clamp(28px, 3.2vw, 54px); font-weight: 800; line-height: 1.2; letter-spacing: -.035em; text-shadow: 0 2px 15px #4b412b45; white-space: nowrap; }
+.youth-composer form { display: flex; gap: 12px; align-items: center; }
+.youth-composer input { width: 100%; min-width: 0; height: 54px; padding: 0 23px; border: 1px solid #fffefa; border-radius: 32px; background: #fffefa; color: #324b3c; font-size: 17px; box-shadow: 0 3px 20px #6047260b; }
+.youth-composer input::placeholder { color: #8b8d85; }
+.youth-composer button { flex: 0 0 auto; height: 54px; padding: 0 27px; border: 2px solid #e7f4d6; border-radius: 32px; background: #66bc63; color: #fff; font-weight: 650; font-size: 17px; box-shadow: 0 3px 15px #4c683222; transition: background .15s; }
+.youth-composer button:hover:not(:disabled) { background: #4a9e51; }
+.youth-composer button:disabled { background: #68b967; color: #fff; opacity: 1; }
+.youth-notice button { border: 0; background: #456f51; padding: 10px 18px; border-radius: 20px; color: white; }
+/* One-shot title card and reveal. Existing portrait only: no new scene,
+   animated filter, fake percentage, or animation left behind in the lobby. */
+.youth-entrance { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; overflow: hidden; background: #101c1b; color: #faf8ef; opacity: 1; visibility: visible; transition: opacity .32s ease, visibility 0s; }
+.youth-entrance::before { content: ""; position: absolute; right: -10%; top: -20%; width: 47%; height: 150%; background: #1e332d; transform: skewX(-15deg); pointer-events: none; }
+.youth-entrance-entering { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .32s ease, visibility 0s .32s; }
+.youth-entrance-layout { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 64px; width: min(820px, calc(100% - 96px)); }
+.youth-entrance-copy { position: relative; z-index: 1; animation: youth-entrance-copy-in .65s both; }
+.youth-entrance-eyebrow { display: block; margin-bottom: 25px; padding-left: 12px; border-left: 2px solid #b4cbb7; color: #c9d6ca; font-size: 12px; letter-spacing: .22em; }
+.youth-entrance-title { display: block; font-size: clamp(60px, 6.8vw, 100px); line-height: 1.12; font-weight: 800; letter-spacing: -.055em; }
+.youth-entrance-title span { display: block; margin-top: 12px; color: #b6ccb9; font-size: .38em; font-weight: 450; letter-spacing: .08em; white-space: nowrap; }
+.youth-entrance-track { width: 154px; height: 2px; margin-top: 38px; background: #faf8ef24; overflow: hidden; }
+.youth-entrance-track span { display: block; height: 100%; width: 40%; background: #c7d8c1; animation: youth-entrance-scan 1.6s ease-in-out 4; }
+.youth-entrance-copy p { max-width: 310px; margin: 15px 0 0; font-size: 12px; line-height: 1.8; color: #a7bbb2; }
+.youth-entrance-copy button { min-height: 44px; margin-top: 20px; padding: 0 20px; border: 1px solid #b4cbb7; border-radius: 4px; background: transparent; color: #f4f7ee; font-size: 14px; }
+.youth-entrance-art { position: relative; width: 320px; aspect-ratio: 2 / 3; }
+.youth-entrance-panel { position: absolute; inset: 9% -2% 4% 11%; background: #c8d5bd; transform: rotate(-7deg); }
+.youth-entrance-portrait { position: absolute; inset: 0; animation: youth-entrance-land .75s cubic-bezier(.2,.75,.2,1) both; }
+.youth-entrance-portrait img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; -webkit-mask-image: linear-gradient(#000 0 72%, transparent 100%); mask-image: linear-gradient(#000 0 72%, transparent 100%); }
+.youth-entrance-marker { position: absolute; left: -9%; bottom: 12%; width: 58px; height: 3px; background: #f4f4e5; }
+.youth-entrance-rule { position: absolute; left: 6%; right: 6%; height: 1px; background: #b8cbb52d; }
+.youth-entrance-rule-top { top: 9%; }
+.youth-entrance-rule-bottom { bottom: 9%; }
+.youth-entrance-failed .youth-entrance-track { display: none; }
+.youth-entrance-failed .youth-entrance-copy, .youth-entrance-failed .youth-entrance-portrait { animation: none; }
+@keyframes youth-entrance-copy-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes youth-entrance-land { 0% { opacity: 0; transform: translateY(-24px); } 75% { opacity: 1; transform: translateY(2px); } 100% { opacity: 1; transform: none; } }
+@keyframes youth-entrance-scan { from { transform: translateX(-160%); } to { transform: translateX(350%); } }
+.youth-screen { background: #050707; overflow: hidden; }
+.youth-screen .lesson-stage { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #070909; }
+.youth-screen .lesson-stage::before, .youth-screen .lesson-stage::after { display: none; animation: none; }
+.youth-screen .lesson-video { object-fit: contain; filter: none; background: #070909; }
+.youth-screen-message { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 22px; align-items: center; justify-content: center; background: #101614; color: #f4f4e9; }
+.youth-screen-message strong { font-size: 38px; font-weight: 500; }
+.youth-screen-message span { font-size: 23px; opacity: .65; }
+.youth-screen .sound-controls { top: auto; right: 24px; bottom: 22px; align-items: center; }
+.youth-screen .sound-toggle { min-height: 44px; border: 1px solid #ffffff55; border-radius: 20px; padding: 9px 18px; font-size: 20px; background: #101714b8; color: #fafbf5; text-shadow: none; }
+.youth-lobby .sound-controls { display: none; }
+.youth-screen .lesson-caption { bottom: 75px; font-size: 27px; background: #080e0cb5; color: #fff; font-family: inherit; }
+.youth-screen .stage-message { color: #f5f6ee; text-shadow: none; font-family: inherit; }
+.youth-screen .thinking-spark { display: none; }
+.youth-screen .stage-message strong { font-size: 30px; }
+.youth-screen .stage-message small { font-size: 20px; }
+.youth-screen .stage-warning { font-family: inherit; color: #fff1d9; background: #302b24f0; }
+.youth-screen .resume-button { border-color: #b0c4a4; background: #f3f1e6; color: #36543f; font-family: inherit; }
+.youth-screen .lesson-card-fallback span, .youth-screen .lesson-card-fallback small { font-family: inherit; font-size: 20px; letter-spacing: 0; }
+.youth-view-toggle { position: absolute; top: 24px; left: 28px; z-index: 20; min-height: 44px; padding: 0 22px; border: 0; border-radius: 30px; background: #f7f6eef0; color: #375240; font-size: 15px; }
+.youth-guide { --pink: #e1c8a0; --panel-ink: #f8f5ee; --panel-muted: #c7c6bd; --panel-line: rgba(244, 238, 225, .25); z-index: 30; top: 26px; right: 28px; bottom: 24px; width: 316px; min-width: 0; color: var(--panel-ink); font-family: inherit; }
+.youth-guide .youth-guide-header { align-items: flex-start; border-bottom: 1px solid var(--panel-line); padding-bottom: 16px; }
+.youth-guide .guide-heading { gap: 8px; }
+.youth-guide .guide-heading strong { color: var(--panel-ink); font-family: inherit; font-size: 27px; font-style: normal; font-weight: 680; line-height: 1.28; letter-spacing: -.035em; text-transform: none; overflow-wrap: anywhere; }
+.youth-guide .guide-heading small { color: var(--panel-muted); font-size: 13px; line-height: 1.5; }
+.youth-guide .youth-guide-new-question { flex: none; min-height: 36px; padding: 3px 0 3px 8px; border: 0; background: transparent; color: var(--pink); font-size: 12px; white-space: nowrap; }
+.youth-guide .youth-guide-new-question:hover:not(:disabled) { color: var(--panel-ink); }
+.youth-guide .youth-guide-new-question:disabled { opacity: .5; }
+.youth-guide .guide-now { gap: 0; padding-bottom: 18px; }
+.youth-guide .guide-progress { height: 4px; margin-top: 0; background: #ffffff36; transform: none; border-radius: 4px; }
+.youth-guide .guide-progress span { border-radius: inherit; }
+.youth-guide .guide-meta { margin-top: 9px; color: var(--panel-muted); font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.youth-guide .guide-title { padding: 0; background: none; color: var(--panel-muted); clip-path: none; font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .04em; line-height: 1.5; text-transform: none; }
+.youth-guide .guide-empty { color: var(--panel-muted); font-size: 13px; }
+.youth-guide .guide-queue li > span { color: var(--pink); font-family: inherit; font-size: 17px; font-style: normal; font-weight: 600; }
+.youth-guide .guide-queue p { color: var(--panel-ink); }
+.youth-guide .guide-queue small { color: var(--panel-muted); font-family: inherit; font-size: 11px; letter-spacing: 0; }
+.youth-guide .guide-add { border-top: 1px solid var(--panel-line); }
+.youth-guide .guide-add input { border: 1px solid #eee9dd85; border-radius: 4px; background: #191d1d9c; color: var(--panel-ink); font-family: inherit; box-shadow: none; }
+.youth-guide .guide-add input:focus { background: #191d1de8; border-color: var(--pink); box-shadow: none; }
+.youth-guide .composer-action { border-radius: 4px; background: var(--pink); color: #2c2b27; }
+.youth-guide .composer-action:disabled { background: #a49d91; color: #2c2b27; opacity: .7; }
+.youth-guide .guide-picks button { color: var(--panel-ink); font-size: 13px; }
+.youth-guide .guide-picks button > span { color: var(--pink); font-family: inherit; }
+.youth-guide .guide-picks button:hover:not(:disabled) { color: #fff; border-color: var(--pink); }
+.youth-notice { position: absolute; z-index: 40; top: 85px; left: 50%; transform: translateX(-50%); width: min(610px, calc(100% - 32px)); display: flex; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 16px; background: #fff9e9f5; border: 1px solid #d8c9a5; box-shadow: 0 4px 20px #4a3d2020; font-size: 14px; line-height: 1.6; }
+.youth-notice { flex-wrap: wrap; }
+.youth-notice > span { flex: 1 1 100%; }
+.youth-notice button { flex-shrink: 0; white-space: nowrap; min-height: 44px; }
+@media (max-width: 700px) {
+  .youth-notice { top: 136px; }
+  .youth-entrance-layout { grid-template-columns: 1fr; gap: 24px; width: calc(100% - 72px); }
+  .youth-entrance-art { order: -1; width: min(200px, 26vh); margin: 0 auto; }
+  .youth-entrance-copy { width: fit-content; margin: 0 auto; }
+  .youth-entrance-eyebrow { margin-bottom: 16px; font-size: 11px; }
+  .youth-entrance-title { font-size: 52px; }
+  .youth-entrance-title span { font-size: 25px; margin-top: 7px; }
+  .youth-entrance-track { margin-top: 22px; }
+  .youth-entrance-copy p { font-size: 11px; max-width: 250px; }
+  .youth-entrance-rule-top { top: 5%; }
+  .youth-entrance-rule-bottom { bottom: 5%; }
+  .youth-lobby::after { background: linear-gradient(180deg, transparent 0 42%, rgba(7, 10, 15, .12) 54%, rgba(7, 10, 15, .78) 79%, rgba(5, 7, 11, .96) 100%); }
+  .youth-active::after { background: linear-gradient(180deg, transparent 0 calc(100% - 288px), rgba(24, 27, 27, .59) calc(100% - 260px), rgba(19, 22, 22, .93) 100%); }
+  .youth-composer { width: auto; left: 20px; right: 20px; bottom: max(32px, env(safe-area-inset-bottom)); }
+  .youth-mentor { width: min(140px, 18vh); margin: 0 6px 10px auto; }
+  .youth-composer h1 { margin-left: 4px; margin-bottom: 17px; font-size: clamp(28px, 7vw, 38px); }
+  .youth-composer form { gap: 8px; }
+  .youth-composer input { padding: 0 16px; font-size: 14px; height: 50px; }
+  .youth-composer button { padding: 0 17px; height: 50px; font-size: 14px; }
+  .youth-view-toggle { top: max(18px, env(safe-area-inset-top)); left: 18px; font-size: 14px; padding: 0 16px; }
+  .youth-guide { top: auto; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); left: 12px; width: auto; height: min(31svh, 265px); min-width: 0; overflow-y: auto; padding: 0 3px 4px; gap: 12px; }
+  .youth-guide .guide-header { padding-bottom: 8px; }
+  .youth-guide .guide-header strong { font-size: 20px; }
+  .youth-guide .guide-body { gap: 12px; }
+  .youth-guide .guide-now { gap: 5px; padding-bottom: 10px; }
+  .youth-guide .guide-now strong { font-size: 16px; }
+  .youth-screen .lesson-caption { bottom: 160px; right: 4%; left: 4%; font-size: 44px; }
+  .youth-screen .sound-toggle { min-height: 144px; padding: 12px 28px; font-size: 44px; border-radius: 36px; }
+}
+@media (max-height: 650px) and (min-width: 701px) {
+  .youth-entrance-layout { width: min(700px, calc(100% - 96px)); gap: 40px; }
+  .youth-entrance-art { width: 220px; }
+  .youth-entrance-title { font-size: 68px; }
+  .youth-mentor { width: min(150px, 22vh); margin-bottom: 8px; }
+}
+/* Same single-action cycle as the original demo. Kept outside the masked image
+   and outside the form so keyboard/touch switching cannot start a lesson. */
+.youth-composer .youth-mentor-switch { position: absolute; right: -10px; bottom: calc(100% + 2px); z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: #e3eee5; box-shadow: none; pointer-events: auto; }
+.youth-composer .youth-mentor-switch:hover:not(:disabled) { background: transparent; color: #fff; }
+.youth-composer .youth-mentor-switch:disabled { background: transparent; color: #8b9d92; }
+.youth-composer .youth-mentor-switch:focus-visible { outline-color: #c5f0cc; }
+.youth-mentor-switch svg { display: block; width: 20px; height: 20px; }
+@media (prefers-reduced-motion: reduce) { .youth-classroom *, .youth-classroom *::before, .youth-classroom *::after { animation: none !important; transition: none !important; } }
+
+/* Opaque DOM surfaces: readable over bright walls, with no blur, animation,
+   post-processing or extra Three.js render pass. */
+.youth-generation-note { margin: 12px 0 0 14px; color: #e7ede9; font-size: 12px; line-height: 1.6; }
+.youth-wallet { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 45; color: #f7faf8; font-size: 14px; line-height: 1.6; }
+.youth-wallet-chip { display: flex; align-items: center; gap: 9px; min-height: 44px; max-width: calc(100vw - 48px); padding: 9px 16px; border: 1px solid #61736a; border-radius: 25px; background: #17231f; color: #f7faf8; box-shadow: 0 4px 18px #0003; font-size: 14px; }
+.youth-wallet-chip-value { color: #cfe3d9; font-size: 12px; font-variant-numeric: tabular-nums; }
+.youth-wallet-dot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: #bfc9c3; }
+.youth-wallet-dot.is-connected { background: #9de5b0; }
+.youth-wallet-panel { position: absolute; bottom: 58px; left: 0; width: 344px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 135px); overflow-y: auto; padding: 20px; border: 1px solid #61736a; border-radius: 18px; background: #15211d; box-shadow: 0 12px 36px #0004; }
+.youth-wallet-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.youth-wallet-panel h2 { margin: 0; color: #fff; font-size: 23px; font-weight: 650; letter-spacing: -.025em; }
+.youth-wallet-eyebrow { display: block; color: #bed0c6; font-size: 12px; }
+.youth-wallet-panel button { min-height: 44px; padding: 9px 13px; background: #273c32; border: 1px solid #7b9385; border-radius: 10px; color: #f7faf8; font-size: 14px; line-height: 1.4; }
+.youth-wallet-panel .youth-wallet-close { flex: 0 0 44px; padding: 0; font-size: 26px; background: #15211d; border-color: #61736a; }
+.youth-wallet-balance { display: grid; gap: 3px; margin: 20px 0 16px; padding: 14px 16px; border: 1px solid #485c50; border-radius: 12px; background: #20332a; }
+.youth-wallet-balance span { color: #c3d8ca; font-size: 12px; }
+.youth-wallet-balance strong { color: #f4fff7; font-size: 23px; font-weight: 550; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.youth-wallet-note { margin: 9px 0; color: #cbd9d1; font-size: 13px; line-height: 1.75; }
+.youth-wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.youth-wallet-panel .youth-wallet-primary { flex: 1; color: #14261b; background: #b8e1bf; border-color: #b8e1bf; font-weight: 650; }
+.youth-wallet-panel button:hover:not(:disabled), .youth-wallet-chip:hover { border-color: #d4eedb; }
+.youth-wallet-panel button:disabled { background: #34483d; border-color: #61736a; color: #b9c6be; }
+.youth-wallet button:focus-visible, .youth-wallet input:focus-visible { outline: 3px solid #c5f0cc; outline-offset: 3px; }
+.youth-wallet-key { display: grid; gap: 9px; margin-top: 16px; }
+.youth-wallet-key label { color: #dce8df; font-size: 13px; }
+.youth-wallet-key input { width: 100%; min-width: 0; min-height: 46px; padding: 10px 12px; border: 1px solid #94a99d; border-radius: 10px; background: #0c1812; color: #f7faf8; font-size: 16px; }
+.youth-wallet-key input::placeholder { color: #adbbb2; font-size: 13px; }
+.youth-wallet-message { margin: 14px 0 0; padding: 10px 12px; border-radius: 9px; background: #3e3022; color: #ffe2b9; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .youth-composer { bottom: max(96px, calc(env(safe-area-inset-bottom) + 80px)); }
+  .youth-generation-note { margin-left: 4px; font-size: 11px; }
+  .youth-wallet { left: 18px; top: max(76px, calc(env(safe-area-inset-top) + 58px)); bottom: auto; }
+  .youth-wallet-chip { max-width: calc(100vw - 36px); }
+  .youth-wallet-panel { position: fixed; top: max(130px, calc(env(safe-area-inset-top) + 112px)); left: 18px; bottom: auto; width: calc(100vw - 36px); max-width: 344px; max-height: calc(100dvh - 375px); padding: 17px; }
+}

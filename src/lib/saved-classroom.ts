@@ -8,6 +8,7 @@ export type SavedClassroomSummary = Readonly<{
 }>;
 
 export type RecordedLesson = Readonly<{
+  recordingId?: ClassroomSessionId;
   lesson: LessonPlan;
   scenes: readonly Readonly<{ plan: ValidatedScenePlan; segment: GeneratedSegment }>[];
 }>;

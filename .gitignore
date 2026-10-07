@@ -1,5 +1,5 @@
 .next/
-node_modules/
+node_modules
 .env*
 !.env.example
 npm-debug.log*
@@ -8,11 +8,10 @@ npm-debug.log*
 # Archived lesson clips (large media)
 recordings/
 
-.DS_Store
-output/
-*.log
-*.pem
-*.key
+# Private youth wallets and owner-scoped recordings (never public assets)
+.youth-tokenpay/
+.youth-recordings/
 
-# Encrypted per-browser wallets and encryption secret
-.tokenpay/
+# Local QA captures, downloaded source assets and developer outputs
+output/
+.DS_Store

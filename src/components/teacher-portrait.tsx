@@ -7,7 +7,8 @@ export function TeacherPortrait({
   expression,
   teacherId,
 }: Readonly<{ className: string; expression: "standing" | "laugh"; teacherId: TeacherId }>) {
-  const portrait = TEACHERS[teacherId].portraits[expression];
+  const portrait = TEACHERS[teacherId].portraits?.[expression];
+  if (!portrait) return null;
   return (
     <Image
       alt=""

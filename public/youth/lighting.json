@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "width": 1536,
+  "height": 1536,
+  "samples": 48,
+  "denoised": true,
+  "meshes": [
+    {
+      "vertices": 3588,
+      "stamp": "c9294351"
+    },
+    {
+      "vertices": 6,
+      "stamp": "dea22395"
+    },
+    {
+      "vertices": 288,
+      "stamp": "63767ba7"
+    },
+    {
+      "vertices": 1956,
+      "stamp": "5e5e1e79"
+    },
+    {
+      "vertices": 252,
+      "stamp": "61351291"
+    },
+    {
+      "vertices": 252,
+      "stamp": "9847e3c6"
+    },
+    {
+      "vertices": 252,
+      "stamp": "fc156649"
+    },
+    {
+      "vertices": 252,
+      "stamp": "a4ea3cca"
+    },
+    {
+      "vertices": 180,
+      "stamp": "3c075a83"
+    },
+    {
+      "vertices": 2844,
+      "stamp": "5c5435c5"
+    },
+    {
+      "vertices": 5328,
+      "stamp": "b0e9e204"
+    },
+    {
+      "vertices": 30,
+      "stamp": "b64885a0"
+    },
+    {
+      "vertices": 504,
+      "stamp": "c839c195"
+    },
+    {
+      "vertices": 8388,
+      "stamp": "f977f365"
+    },
+    {
+      "vertices": 36,
+      "stamp": "e4e0bc35"
+    },
+    {
+      "vertices": 1320,
+      "stamp": "49296a51"
+    },
+    {
+      "vertices": 2028,
+      "stamp": "400a900b"
+    },
+    {
+      "vertices": 144,
+      "stamp": "13273961"
+    },
+    {
+      "vertices": 3168,
+      "stamp": "5cbb42a5"
+    },
+    {
+      "vertices": 16788,
+      "stamp": "101c0d33"
+    },
+    {
+      "vertices": 84654,
+      "stamp": "831181e7"
+    },
+    {
+      "vertices": 288,
+      "stamp": "8e349519"
+    },
+    {
+      "vertices": 1296,
+      "stamp": "a46e5c11"
+    },
+    {
+      "vertices": 36,
+      "stamp": "a71799f3"
+    },
+    {
+      "vertices": 96,
+      "stamp": "fafe71a5"
+    }
+  ],
+  "uvBytes": 535896,
+  "lightmapBytes": 189062,
+  "lightmapSha256": "4dca32136dc8515224df7b9d593085d3f0e05edf542e13d129de5aa744c39152",
+  "uvSha256": "eed8c2eecdfe72af1b74eac48425a31784c4634c0b41cb441e12a6d1336223b1"
+}

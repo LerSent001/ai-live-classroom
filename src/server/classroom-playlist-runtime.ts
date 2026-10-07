@@ -27,7 +27,7 @@ export type ClassroomWorkerRuntime = Readonly<{
     sessionId: ClassroomSessionId,
     command: ClassroomCommand,
   ): CommandOutcome | null;
-  clear(sessionId: ClassroomSessionId): Promise<boolean>;
+  clear(sessionId: ClassroomSessionId, abandon?: boolean): Promise<boolean>;
 }>;
 
 type PlaylistEntry = {
@@ -154,8 +154,8 @@ function aggregateMetrics(
       (sum, snapshot) => sum + snapshot.metrics.generatedSeconds,
       0,
     ),
-    estimatedSpendCents: snapshots.reduce(
-      (sum, snapshot) => sum + snapshot.metrics.estimatedSpendCents,
+    estimatedSpendCents: snapshots.some((snapshot) => snapshot.metrics.estimatedSpendCents === null) ? null : snapshots.reduce(
+      (sum, snapshot) => sum + (snapshot.metrics.estimatedSpendCents ?? 0),
       0,
     ),
     bufferUnderruns: snapshots.reduce(
@@ -171,7 +171,24 @@ export class ClassroomPlaylistRuntime {
   constructor(
     private readonly worker: ClassroomWorkerRuntime,
     private readonly recordSelection?: (selection: LessonSelection) => void,
+    private readonly options: {
+      allowReplayGeneration?: boolean;
+      maxQueuedLessons?: number;
+      savedLesson?(topic: string, teacherId: TeacherId): RecordedLesson | null;
+      recordReplay?(sessionId: ClassroomSessionId, lesson: RecordedLesson): void;
+    } = {},
   ) {}
+
+  restore(sessionId: ClassroomSessionId, entries: readonly { sessionId: ClassroomSessionId; topic: string; commandId?: CommandId }[]): ClassroomSnapshot {
+    const session: PlaylistSession = {
+      id: sessionId, replay: null, version: 1, stopped: false, warning: null, handledCommands: new Map(),
+      entries: entries.map(entry => ({ ...entry, started: true, startCommandId: toCommandId(`restored-${randomUUID()}`), cancelledMessage: null })),
+    };
+    if (!entries.length || entries[0]?.sessionId !== sessionId) throw new Error("Invalid recovery playlist.");
+    this.sessions.set(sessionId, session);
+    for (const entry of entries) if (entry.commandId) session.handledCommands.set(entry.commandId, { kind: "snapshot", snapshot: this.snapshot(session) });
+    return this.snapshot(session);
+  }
 
   create(input: { sessionId: ClassroomSessionId }): ClassroomSnapshot {
     const existing = this.sessions.get(input.sessionId);
@@ -204,6 +221,7 @@ export class ClassroomPlaylistRuntime {
     this.schedule(session);
     return this.snapshot(session);
   }
+  refresh(): void { for (const session of this.sessions.values()) this.schedule(session); }
 
   replay(sessionId: ClassroomSessionId, recording: RecordedClassroom, commandId: CommandId): CommandOutcome | null {
     const session = this.sessions.get(sessionId);
@@ -213,6 +231,11 @@ export class ClassroomPlaylistRuntime {
     if (session.entries[0]!.started) throw new Error("请先返回新课堂，再开始播放。");
     const opening = recording.lessons[0];
     if (!opening) throw new Error("Saved classroom has no opening lesson.");
+    if (this.options.recordReplay) {
+      this.recordSelection?.({ playlistId: sessionId, sessionId, previousSessionId: null, position: 1,
+        topic: opening.lesson.topic, teacherId: opening.lesson.teacherId, durationSeconds: opening.lesson.durationSeconds, commandId });
+      this.options.recordReplay(sessionId, opening);
+    }
     this.worker.replay(sessionId, opening);
     session.replay = recording;
     session.entries[0]!.topic = opening.lesson.topic;
@@ -295,13 +318,14 @@ export class ClassroomPlaylistRuntime {
     return { kind: "snapshot", snapshot: this.snapshot(session) };
   }
 
-  async clear(sessionId: ClassroomSessionId): Promise<boolean> {
+  async clear(sessionId: ClassroomSessionId, abandon = false): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) return true;
     const snapshots = this.workerSnapshots(session);
-    if (snapshots.some(lessonIsBusy)) return false;
+    if (!abandon && snapshots.some(lessonIsBusy)) return false;
+    session.stopped = true;
     const results = await Promise.all(
-      session.entries.map((entry) => this.worker.clear(entry.sessionId)),
+      session.entries.map((entry) => this.worker.clear(entry.sessionId, abandon)),
     );
     if (results.some((result) => !result)) return false;
     this.sessions.delete(sessionId);
@@ -325,8 +349,8 @@ export class ClassroomPlaylistRuntime {
       session.warning = "This playlist is stopping and cannot accept another lesson.";
     } else if (session.entries.length - 1 >= DEMO_CONFIG.maxFollowups) {
       session.warning = "Both follow-ups have been selected. This demo is limited to 50 seconds.";
-    } else if (queuedCount >= CLASSROOM_CONFIG.maxQueuedLessons) {
-      session.warning = `The local playlist holds ${CLASSROOM_CONFIG.maxQueuedLessons} upcoming lessons at a time.`;
+    } else if (queuedCount >= (this.options.maxQueuedLessons ?? CLASSROOM_CONFIG.maxQueuedLessons)) {
+      session.warning = `The local playlist holds ${this.options.maxQueuedLessons ?? CLASSROOM_CONFIG.maxQueuedLessons} upcoming lessons at a time.`;
     } else if (
       session.entries.slice(activeIndex).some(
         (entry) =>
@@ -337,19 +361,32 @@ export class ClassroomPlaylistRuntime {
       session.warning = "That lesson is already in the playlist.";
     } else {
       if (session.replay !== null) {
-        const next = session.replay.lessons[session.entries.length];
-        if (!next || recordingTopicKey(next.lesson.topic) !== recordingTopicKey(command.topic)) {
+        const prior = session.replay.lessons[session.entries.length];
+        const next = this.options.savedLesson?.(command.topic, this.primaryTeacher(session))
+          ?? (prior && recordingTopicKey(prior.lesson.topic) === recordingTopicKey(command.topic) ? prior : null);
+        if (!next && !this.options.allowReplayGeneration) {
           session.warning = "这个分支还没有保存的视频，请选择之前播放过的续讲问题。";
           session.version += 1;
           return { kind: "snapshot", snapshot: this.snapshot(session) };
         }
-        const childId = toClassroomSessionId(`replay-child-${randomUUID()}`);
-        this.worker.create({ sessionId: childId });
-        this.worker.replay(childId, next);
-        session.entries.push({ sessionId: childId, topic: next.lesson.topic, startCommandId: childCommandId(command.id, "replay"), started: true, cancelledMessage: null });
-        session.warning = null;
-        session.version += 1;
-        return { kind: "snapshot", snapshot: this.snapshot(session) };
+        if (next) {
+          const childId = toClassroomSessionId(`replay-child-${randomUUID()}`);
+          if (this.options.recordReplay) {
+            this.recordSelection?.({ playlistId: session.id, sessionId: childId, previousSessionId: session.entries.at(-1)!.sessionId,
+              position: session.entries.length + 1, topic: next.lesson.topic, teacherId: next.lesson.teacherId,
+              durationSeconds: DEMO_CONFIG.followupDurationSeconds, commandId: command.id });
+            this.options.recordReplay(childId, next);
+          }
+          this.worker.create({ sessionId: childId });
+          this.worker.replay(childId, next);
+          session.entries.push({ sessionId: childId, topic: next.lesson.topic, startCommandId: childCommandId(command.id, "replay"), started: true, cancelledMessage: null });
+          session.warning = null;
+          session.version += 1;
+          return { kind: "snapshot", snapshot: this.snapshot(session) };
+        }
+        // A manual new branch is an explicit request, not a cache fallback.
+        // It still passes the wallet/whole-segment budget check in prepare().
+        session.replay = null;
       }
       const childId = toClassroomSessionId(
         `playlist-child-${randomUUID()}`,
@@ -531,6 +568,7 @@ export class ClassroomPlaylistRuntime {
       currentPrompt: playingOwner?.currentPrompt ?? null,
       nextPrompt: ready[0]?.prompt ?? null,
       metrics: aggregateMetrics(active.metrics, snapshots, ready.length),
+      policy: { ...active.policy, maxQueuedLessons: this.options.maxQueuedLessons ?? active.policy.maxQueuedLessons },
       warning: session.warning ?? active.warning,
       playlist,
     };

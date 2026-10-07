@@ -120,8 +120,8 @@ export function toPrompt(value: string): Prompt {
   return trimmed as Prompt;
 }
 
-function durationOf(value: unknown): LessonDurationSeconds {
-  if (value !== 10 && value !== 30) throw new Error("durationSeconds must be 10 or 30");
+function durationOf(value: unknown, planned = false): LessonDurationSeconds {
+  if (value !== 10 && value !== 30 && !(planned && (value === 15 || value === 20 || value === 25))) throw new Error("durationSeconds must be 10 or 30 for requests, or 15/20/25 for a planned opening");
   return value;
 }
 
@@ -134,8 +134,9 @@ function topicOf(value: unknown): string {
 }
 
 export function parseTeacherId(value: unknown): TeacherId {
+  if (value === "youth-question" || value === "youth-mentor-male" || value === "youth-mentor-female" || value === "youth-kindergarten" || value === "youth-primary" || value === "youth-middle" || value === "youth-high") return value;
   if (value === "monokuma" || value === "monomi") return value;
-  throw new Error("Unknown teacherId. Choose monokuma or monomi.");
+  throw new Error("Unknown teacherId. Choose a supported classroom profile.");
 }
 
 export function parseCreateClassroomRequest(value: unknown): {
@@ -248,10 +249,10 @@ function parseStep(value: unknown): LessonStep {
 
 export function parseLessonPlan(value: unknown): LessonPlan {
   const record = recordOf(value, "lesson plan");
-  const durationSeconds = durationOf(record.durationSeconds);
+  const durationSeconds = durationOf(record.durationSeconds, true);
   const targetSceneCount = integerOf(record.targetSceneCount, "target scene count");
-  if (targetSceneCount !== 2 && targetSceneCount !== 6) {
-    throw new Error("target scene count must be 2 or 6");
+  if (targetSceneCount !== 2 && targetSceneCount !== 3 && targetSceneCount !== 4 && targetSceneCount !== 5 && targetSceneCount !== 6) {
+    throw new Error("target scene count must be between 2 and 6");
   }
   if (targetSceneCount * CLASSROOM_CONFIG.clipDurationSeconds !== durationSeconds) {
     throw new Error("scene count must match the lesson duration");
@@ -320,7 +321,7 @@ export function parsePlan(value: unknown): ValidatedScenePlan {
 function parseRenderTimings(value: unknown) {
   const record = recordOf(value, "render timings");
   return {
-    requestId: nonEmptyStringOf(record.requestId, "video request id"),
+    requestId: nonEmptyStringOf(record.requestId, "fal request id"),
     queueWaitMs: nullableNumberOf(record.queueWaitMs, "queue wait"),
     inferenceMs: nullableNumberOf(record.inferenceMs, "inference time"),
     totalMs: numberOf(record.totalMs, "provider total"),
@@ -412,7 +413,7 @@ function parsePolicy(value: unknown): ClassroomPolicy {
   const record = recordOf(value, "classroom policy");
   return {
     clipDurationSeconds: numberOf(record.clipDurationSeconds, "clip duration"),
-    durationOptionsSeconds: arrayOf(record.durationOptionsSeconds, "duration options", durationOf),
+    durationOptionsSeconds: arrayOf(record.durationOptionsSeconds, "duration options", value => durationOf(value)),
     startupRunwayScenes: integerOf(record.startupRunwayScenes, "startup runway"),
     steadyRunwayScenes: integerOf(record.steadyRunwayScenes, "steady runway"),
     recoveryRunwayScenes: integerOf(record.recoveryRunwayScenes, "recovery runway"),
@@ -468,7 +469,7 @@ function parseMetrics(value: unknown): ClassroomMetrics {
     generatedScenes: integerOf(record.generatedScenes, "generated scenes"),
     skippedScenes: integerOf(record.skippedScenes, "skipped scenes"),
     generatedSeconds: numberOf(record.generatedSeconds, "generated seconds"),
-    estimatedSpendCents: integerOf(record.estimatedSpendCents, "estimated spend"),
+    estimatedSpendCents: record.estimatedSpendCents === null ? null : integerOf(record.estimatedSpendCents, "estimated spend"),
     latestPlanningMs: nullableNumberOf(record.latestPlanningMs, "latest planning"),
     latestGenerationMs: nullableNumberOf(record.latestGenerationMs, "latest generation"),
     averageGenerationMs: nullableNumberOf(record.averageGenerationMs, "average generation"),
@@ -492,6 +493,7 @@ function parseSnapshot(value: unknown): ClassroomSnapshot {
     id: toClassroomSessionId(stringOf(record.id, "session id")),
     teacherId: parseTeacherId(record.teacherId),
     version: integerOf(record.version, "snapshot version"),
+    ...(record.runtimeId === undefined ? {} : { runtimeId: brandedString(stringOf(record.runtimeId, "runtime ID"), "runtime ID") }),
     epoch: integerOf(record.epoch, "snapshot epoch"),
     configured: booleanOf(record.configured, "configured"),
     fixture: booleanOf(record.fixture, "fixture"),

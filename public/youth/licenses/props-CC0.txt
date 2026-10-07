@@ -1,0 +1,21 @@
+Third-party geometry: Creative Commons CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Monstera Plant and Pothos Plant Small — Isa Lousberg
+https://poly.pizza/bundle/House-Plants-set-Kpj32c7VmF
+https://poly.pizza/m/s9Nocqk1Ge
+https://poly.pizza/m/QqbCvErL93
+Source pages label the assets Public Domain (CC0), verified 2026-09-26.
+
+Books — CreativeTrio
+https://poly.pizza/m/dxt7dETAy9
+https://poly.pizza/bundle/Household-Props-001-KsNBhP96PT
+Source pages label the assets Public Domain (CC0), verified 2026-09-26.
+
+Adaptation: embedded colour atlases sampled offline into vertex colours;
+Monstera colours harmonised to green; no original textures, skins or animations
+are needed at runtime. Geometry silhouettes remain from the credited authors.
+All three files are baked into a shared classroom prop batch at startup.
+
+The original source files are not claimed as original work of this project.

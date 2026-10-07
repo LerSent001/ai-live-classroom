@@ -1,5 +1,4 @@
 "use client";
-import { TokenPayWallet } from "@/components/tokenpay-wallet";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LessonDeck, type SignoffState } from "@/components/lesson-deck";
@@ -126,7 +125,6 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
 
   return (
     <main data-entrance-phase={entrancePhase} className={`classroom-experience ${experienceActive ? "classroom-experience-active" : "classroom-experience-lobby"}`}>
-      <TokenPayWallet ready={Boolean(snapshot)} />
       <ClassroomSet active={experienceActive} phase={entrancePhase} onPhaseChange={setEntrancePhase}>
         <LessonDeck
           teacherId={teacherId}
@@ -143,7 +141,7 @@ export function ClassroomView({ classroom }: Readonly<{ classroom: ReturnType<ty
       <div className="experience-notices">
         {snapshot?.fixture && (
           <div className="notice notice-fixture" role="status">
-            Verification fixture: local media only. TokenPay cannot be called in this mode.
+            Verification fixture: local media only. fal cannot be called in this mode.
           </div>
         )}
         {classroom.connectionError && (

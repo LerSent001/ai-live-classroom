@@ -103,10 +103,21 @@ export function parseInitialLesson(input: {
   output: string;
   latencyMs: number;
   preparedBy: string;
+  adaptiveOpening?: boolean;
 }): LessonPlan {
   const record = jsonObject(input.output);
-  const targetSceneCount = sceneCountForDuration(input.durationSeconds);
+  let durationSeconds = input.durationSeconds;
+  if (input.adaptiveOpening) {
+    const planned = record.durationSeconds ?? (Array.isArray(record.steps) ? record.steps.length * 5 : null);
+    if (planned !== 15 && planned !== 20 && planned !== 25 && planned !== 30) throw new Error("开场规划必须选择 15、20、25 或 30 秒。");
+    durationSeconds = planned;
+  }
+  const targetSceneCount = sceneCountForDuration(durationSeconds);
   const steps = parseSteps({ record, count: targetSceneCount });
+  if (input.adaptiveOpening) for (const step of steps) {
+    const words = step.narration.match(/\p{Script=Han}|[\p{L}\p{N}]+/gu) ?? [];
+    if (words.length > (containsChinese(step.narration) ? 24 : 14)) throw new Error("单段台词超过五秒的自然讲述上限，未提交视频生成。");
+  }
   const title = requiredString(record, "title");
   const bigQuestion = requiredString(record, "bigQuestion");
   return {
@@ -115,7 +126,7 @@ export function parseInitialLesson(input: {
     teacherId: input.teacherId,
     title,
     bigQuestion,
-    durationSeconds: input.durationSeconds,
+    durationSeconds,
     targetSceneCount,
     steps,
     preparedBy: input.preparedBy,

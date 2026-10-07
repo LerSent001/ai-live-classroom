@@ -1,0 +1,26 @@
+[
+  {
+    "file": "monstera-plant.glb",
+    "author": "Isa Lousberg",
+    "license": "CC0-1.0",
+    "source": "https://poly.pizza/m/s9Nocqk1Ge",
+    "triangles": 2892,
+    "bytes": 103904
+  },
+  {
+    "file": "pothos.glb",
+    "author": "Isa Lousberg",
+    "license": "CC0-1.0",
+    "source": "https://poly.pizza/m/QqbCvErL93",
+    "triangles": 1624,
+    "bytes": 70944
+  },
+  {
+    "file": "books.glb",
+    "author": "CreativeTrio",
+    "license": "CC0-1.0",
+    "source": "https://poly.pizza/m/dxt7dETAy9",
+    "triangles": 360,
+    "bytes": 27624
+  }
+]

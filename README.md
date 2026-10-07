@@ -1,49 +1,72 @@
-# AI Live Classroom · AI 在线课堂
+# 中文课堂 · Live Classroom
 
-输入主题，由文本模型编写教案，再逐段生成讲解视频，在可交互的 3D 教室中播放。支持中文交互、教师形象选择、30 秒开场和最多两次 10 秒续讲。
+输入自己的问题，在轻量 3D 教室中观看中文视频讲解。**中文课堂是 `main` 主版本和默认首页**；不按幼儿园、小学、初中、高中分类，讲解深度由问题内容与明确要求决定。
 
-![课堂界面](docs/lobby-danganronpa.jpg)
+![中文课堂实际页面](docs/classroom.png)
 
-## 接口与当前状态
+## 版本
 
-| 能力 | 当前实现 |
-| --- | --- |
-| 视频生成 | **仅 TokenPay / TokenDance 网关**，模型 `minimax-h3-max` |
-| 教案生成 | TokenDance 网关，`deepseek-v3.2`，使用当前用户钱包 |
-| 离线海报与立绘工具 | OpenAI Images，仅手动运行脚本时调用，不参与课程生成 |
-| 用户钱包授权 | 已实现 S256 PKCE 授权及手动 Key 连接，按浏览器隔离钱包 |
-
-视频提交和任务查询的域名固定为 `tokendance.space`，不提供备用视频服务或自定义网关地址。视频创建 POST 只发送一次；提交结果未知、余额不足、Key 失效或任务失败时停止，不自动重新创建任务。视频结果文件可能由平台返回的其他 CDN 域名提供。
-
-**这次已完成网关适配及模拟测试，尚未进行真实 TokenDance 付费生成和账单验证。** 当前按浏览器 Cookie 隔离钱包，尚未提供跨设备账户登录。
-
-应用归因固定为 `https://github.com/LerSent001/ai-live-classroom`。详见 [合作申请与接入状态](docs/tokendance-integration.md)。
+- **`main`**：中文课堂，六套桌椅、公式黑板、固定悬挂机械臂屏幕，无角色、口号或室外场景。首页 `/`；原 `/zh-youth` 地址继续可用。
+- **[旧版快照 `2cd7d47`](https://github.com/LerSent001/ai-live-classroom/tree/2cd7d47ad0e7d8f4fd13970df5dac03068b4ed23)**：可从历史提交取回切换前的主版本，黑白熊风格不再作为主要版本。原来的 `codex/integrate-courseware` 分支也不受影响。
+- 本地兼容 Demo：`/styles/monokuma`，不出现在默认入口。脚本同样使用 TokenDance DeepSeek 4.1 Flash（关闭思考），钱包与会话仍与主课堂隔离；旧 Demo 的 fal 视频链路不变。参考 [旧版说明](README.monokuma.md)。
 
 ## 本地运行
 
-使用 Node 22.6+：
+需要 Node.js 22.6+。
 
 ```bash
+git clone https://github.com/LerSent001/ai-live-classroom.git
+cd ai-live-classroom
 npm ci
 cp .env.example .env.local
-# 本地默认无需填写 Key；在页面授权连接 TokenPay 钱包
-# 部署时将 TOKENPAY_PUBLIC_URL 改成实际 HTTPS 域名
 npm run dev
 ```
 
-在 `http://localhost:3000` 打开教室。Key 加密保存在服务器忽略目录中，禁止提交到 Git。未连接钱包时，不发起课程规划或视频请求。
+打开 `http://localhost:3000`。浏览教室无需模型密钥；开始生成前，在页面连接自己的 TokenDance 钱包。主版本不需要公共模型 Key；旧 Gemini 接口、模型配置及项目内 Key 已移除，没有自动回退。
 
-只浏览教室或切换角色不收费；主动创建课程会调用付费服务。完整 30/10/10 路径最多提交 10 段五秒视频，同时最多生成两段。历史录制命中时直接播放已有视频，不产生新视频调用，也不再次计费。
+生产预览：
 
-当前保留了原型的本地价格复核截止时间 `2026-09-07T00:00:00Z`，超过该时间会拒绝新增生成。这不是 TokenDance 的价格有效期。运行时的 `estimatedSpendCents` 等旧字段是保留的本地调度预算计数，不代表 TokenDance 人民币价格或实际账单；新视频记录的费用估算和实际扣费均保持 `null`，待平台价格与账单联调后更新。
+```bash
+npm run build
+npm start
+```
 
-默认 `SAVE_RECORDINGS=1`，将脚本、任务 ID、结果元数据与下载的视频保存在 Git 忽略的 `recordings/`。日志不记录鉴权头或完整 Key。查询超时不代表远程任务被取消；使用已保存的任务 ID 核对状态，不应重复生成。
+## 钱包与课程
 
-如需使用 shell 的网络代理，可运行 `npm run dev:proxy` / `npm run start:proxy`，需要 Node 22.21+ 或 24.5+。
+规划使用 TokenDance 的 `deepseek-v4.1-flash`，显式关闭深度思考；三题完整脚本实测平均约 6.34 秒，详见[测试记录与局限](docs/youth/deepseek-fast-planner.zh-CN.md)，不保证所有请求均在 10 秒内完成。视频使用其 MiniMax V2 `minimax-h3-max`。开场 30 秒，由六段 5 秒视频组成；最多手动选择两节 10 秒续课。不会自动选择问题或自动重提付费任务。
 
-## 部署与验证
+内容模型按 [2026-09-22 文本对比](docs/youth/planner-comparison.zh-CN.md) 及关闭思考实测选择；此次仅测试课程脚本，没有生成视频。本工作区两个风格共用同一脚本适配器，但不会共用访客钱包；不改其他 Git 分支或历史生成记录。
 
-课程状态保存在单个 Next.js Node 进程内，视频写入本地磁盘。使用常驻进程部署；当前不适合无状态、多实例或短时 Serverless 环境。服务重启不会恢复已提交的远程任务。
+- 每位访客使用自己的 TokenDance 授权，不共用站长的模型 Key。
+- 浏览教室、展开钱包不会提交生成。点击开始或手动选择续课后可能计费；实际金额以平台账单为准。
+- 每节付费课程在提交脚本前读取人民币价格和余额，保守覆盖该节全部片段、脚本上限与 10% 余量；预检失败不提交。它不是平台原子冻结，不能保证钱包被其他应用同时消费时仍足够。
+- 中文课堂等本节全部片段就绪后起播；已手选的续课可在后台完成，仍最多两个视频任务并发。刷新接回当前片段，加载失败可只重载视频，退出停止新提交但不撤销已受理任务。
+- Key 经服务端保存为加密文件，不返回浏览器，不写入 localStorage、日志或 Git。加密密钥同样在服务器上，站长必须保护服务器和备份。
+- 各浏览器的钱包、会话和录制相互隔离；丢失身份 Cookie 后不能直接恢复旧录制。
+- 已验证真实钱包及文本脚本请求；视频生成链路和逐笔账单未做此次验收。自动测试中的钱包金额和播放视频均为模拟数据。
+
+详见 [TokenDance 接入与安全边界](docs/youth/tokenpay-integration.zh-CN.md)。
+
+## 部署与在线体验
+
+**GitHub 仓库地址不是在线课堂地址。当前尚未配置公共运行服务器。**
+
+完整体验需要一个长期运行的 Node.js 服务、HTTPS 和持久化存储，并保持 **单实例**。授权流程仍在内存里；已录制课程可在原浏览器加载钱包后重建运行态，只查询原视频任务编号、补存成片，不重新提交。重启后的播放从已保存片段重新开始，不保证保留秒级进度；缺失脚本、任务编号或从未提交的片段不能凭空恢复。
+
+GitHub Pages 只能托管静态网页，不能直接运行本项目的钱包接口、规划与生成任务。不要把前端上传成功当作完整课堂已上线，也不要将访客 Key 搬到公开页面来绕过后端。
+
+可部署到支持常驻 Node 服务的平台或自己的服务器。设置 `TOKENPAY_PUBLIC_URL` 为实际 HTTPS 访问域名，保护并持久化 `.youth-tokenpay/` 和 `.youth-recordings/`。中文付费生成要求开启录制；关闭 `SAVE_RECORDINGS` 时只允许浏览与已有录播。不要把这些目录放进 `public/`。
+
+## 性能
+
+- 默认按需渲染，镜头停稳后不维持 WebGL 动画循环；正常视频由 DOM 播放。
+- 场景约 40,072 三角形、27 次常规绘制；六套桌椅合批，DPR 上限 1.25。
+- 初始化后缓存主阴影，接触阴影仅计算一次；无逐帧 AO、后处理、骨骼或机械臂物理。
+- 墙面、木纹和公式共用一张约 80 KB 图集。无室外模型，不透明蓝色玻璃。
+
+这些是代码预算与受控测试结果，不是对所有 MacBook Air 的温度或续航保证。
+
+## 验证
 
 ```bash
 npm run typecheck
@@ -53,28 +76,20 @@ npm run build
 npm run verify
 ```
 
-测试通过注入 HTTP 响应验证 TokenDance 路由、鉴权、归因、轮询、失败停止和禁止重试。`verify` 使用空 Key 验证无消费路径，不创建真实付费任务。
+`verify` 用空密钥和匿名钱包检查免费路径，不调用真实生成。浏览器脚本位于 `scripts/verify-youth-browser.cjs`，只使用隔离上下文和本地模拟片段。不要为了测试擅自连接真实钱包或提交付费课程。
 
-## 代码入口
+恢复回归另见 `scripts/verify-youth-recovery.cjs`：后台 Chromium、本地编码媒体、拦截所有课程提交、屏蔽外部请求，覆盖 11 个桌面/手机场景，包括最后一段刷新、加载失败重载/退出、提交回执丢失、播放回执延迟、服务重启、自动播放受限、存储受限、短暂媒体连接失败和播放确认挂起。网络确认只重试同一个应用命令编号；视频提供方的生成 POST 不重试。
 
-- `src/server/tokenpay-video.ts`：唯一的视频创建与轮询实现。
-- `src/server/classroom-runtime-instance.ts`：课程规划与视频生成的服务端绑定。
-- `src/lib/classroom-config.ts`：角色、提示词、固定模型、网关与 App URL。
-- `src/server/tokenpay-planner.ts`：通过 TokenDance 生成教案。
-- `src/components/set/`：Three.js / React Three Fiber 教室。
+`scripts/verify-youth-flow.cjs` 使用真实课堂运行态及临时录制目录，脚本、余额、视频提供方完全模拟，播放本地编码媒体；覆盖提交问题、30 秒开场、手选两次 10 秒续讲、10 段连续播放和两任务并发。两类验证都不代表真实付费视频或逐笔扣费验收，不连接用户钱包。人物仍按黑白熊旧流程，用编号角色表、声音与风格文字约束，不传首帧或身份参考图。
+
+中文主课堂的新开场由 DeepSeek 在一次响应中选择 15 / 20 / 25 / 30 秒，并写出对应的 3 / 4 / 5 / 6 段五秒分镜、台词和动作；不再强制六段。续讲仍为用户手选的 10 秒。开始前按 30 秒上限核验余额以避免中途缺钱，规划完成后预算预留缩减到实际时长；预留不是平台冻结或实际扣费，只提交规划中必要的镜头。旧录制保留原时长，不裁切。
+
+有本地历史录制时，可运行 `node --import tsx scripts/verify-cached-classroom.cjs`，使用原脚本及十段真实 MP4 走原生录播 API，覆盖连续播放、两次续讲及返回输入页，不提交生成。`YOUTH_CACHED_MEDIA=1 YOUTH_OPENING_SECONDS=15`（也可选 20、25）配合 `node --import tsx scripts/verify-youth-flow.cjs`，使用这些真实缓存视频作为播放测试素材、模拟规划和生成，检查短课程控制流；不把旧素材冒充新的短课程生成结果。历史录制不会上传到 Git。
 
 ## 来源与许可
 
-基于 [internetphysics/live-classroom](https://github.com/internetphysics/live-classroom)，基础提交 `5a07110fa4e0b3dc4db0eab842bc6e0cf4169de4`。由 LerSent001 整理发布中文交互与课堂视觉修改版，保留原作者 MIT 许可和署名。
+基于 [internetphysics/live-classroom](https://github.com/internetphysics/live-classroom)，保留原作者 [MIT 许可](LICENSE)。
 
-代码采用 MIT 许可。Monokuma、Monomi 与 Danganronpa 角色属于 Spike Chunsoft；第三方角色素材不受本项目 MIT 许可覆盖，发布仓库不代表取得商业使用许可。各素材来源与限制见 `public/characters/*/SOURCE.md` 和 `public/models/monokuma/SOURCE.md`。
+中文场景桌椅来自 Ethan Place / Poly Haven，采用 CC0；建筑、门窗和电视臂为本项目低模，表面图像及处理方式见 [资产来源](public/youth/SOURCE.md)。不宣称整套场景来自开源模型库。
 
-## TokenPay 钱包
-
-页面右上角选择「授权连接」，在 TokenDance 确认 Key 的额度与有效期后自动返回。已有 Key 可选择「粘贴 Key」；保存前仅查询余额，不会生成课程。开始课程才会产生模型调用费用。
-
-授权使用 S256 PKCE、10 分钟有效的一次性状态，并绑定发起授权的浏览器。无需 Watcha OAuth 客户端 ID。教案与视频使用该浏览器连接的 Key，服务端不回退到共享 Key。每个浏览器的会话与录像独立保存。断开后停止新的视频提交，已被平台接受的任务可能继续完成与计费。
-
-Key 以 AES-256-GCM 加密保存在被 Git 忽略的 `.tokenpay/`，目录同时保存权限为 600 的本机加密密钥；部署应保护并持久化整个目录，磁盘管理员可读取其中的数据。浏览器只持有 HttpOnly 会话 Cookie。清除 Cookie 后需重新连接钱包；平台 Key 的撤销请到 TokenDance 控制台操作。
-
-当前适用于单个 Node 服务实例与持久化磁盘；多实例部署前需将钱包、授权状态和课堂运行时迁移到共享存储。授权期间重启服务会使该次授权失效，需要重新发起。设置 `TOKENPAY_PUBLIC_URL` 为真实访问地址，否则跨域校验和回调会拒绝请求。
+黑白熊、莫奈美及相关游戏角色不是本项目原创。旧风格资产的来源记录不等于独立开放素材许可，不能因为代码是 MIT 就认为角色资产也是 MIT；主入口不加载这些资源。

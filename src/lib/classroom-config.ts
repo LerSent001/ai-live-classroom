@@ -4,12 +4,66 @@ import type {
   LessonSceneCount,
   TeacherId,
 } from "@/lib/classroom-types";
+import { isYouthMentorTeacher, isYouthTeacher, YOUTH_MENTOR_TEACHER_IDS, YOUTH_TEACHER_ID } from "@/lib/youth-classroom";
+
+export const YOUTH_QUESTION_GUIDANCE =
+  "Answer the learner's actual question directly. Choose depth, terminology and examples only from the question's content, specificity and explicitly requested explanation style. Do not assign or infer an age, school stage or grade. Do not impose a preset difficulty ceiling. When no depth is requested, explain clearly and accurately, defining necessary terms without omitting relevant reasoning, formulas or units.";
+
+function youthNarrator() {
+  return {
+    name: "中文讲解", label: "中文讲解", showName: "中文课堂",
+    portraits: null,
+    voice: "a warm, clear adult Mandarin narrator, calm and natural, never a character impersonation",
+    characterSheet: [
+      "1. No on-screen presenter, mascot, bear, rabbit, or copyrighted character.",
+      "2. Show only the educational objects, accurate diagrams, and demonstrations relevant to the lesson.",
+      "3. Narration is an off-screen adult Mandarin voice, with no lip-sync character.",
+      "4. Use clean, bright, softly textured educational illustration in cream, sage, blue and natural wood colors.",
+    ],
+  } as const;
+}
+
+const youthMentorVoices = {
+  [YOUTH_MENTOR_TEACHER_IDS.male]: "a warm, lively young adult male Mandarin educator, speaking clearly and naturally with a consistent voice",
+  [YOUTH_MENTOR_TEACHER_IDS.female]: "a warm, lively young adult female Mandarin educator, speaking clearly and naturally with a consistent voice",
+} as const;
+const youthMentorSheets = {
+  [YOUTH_MENTOR_TEACHER_IDS.male]: [
+    "1. The only speaking on-screen presenter is the original male classroom mentor, a young human educator; never a bear, rabbit, mascot, or second person.",
+    "2. Identity: tousled dark hair, warm amber-brown eyes and friendly youthful face; redraw him as a 2.7-head-tall Japanese SD/Q-style character with a large expressive head and compact body, still a young-adult mentor, consistent across shots.",
+    "3. Outfit: white zip athletic jacket with muted sage-green sleeves, blue crew-neck undershirt, dark trousers; never change colors or add accessories.",
+    "4. He explains with expressive open-palm gestures and clearly visible Mandarin lip sync; teaching diagrams may appear beside him.",
+    "5. Render him as 1990s Japanese TV anime hand-painted cel animation: variable ink contour, opaque paint and two-tone hard-edged cel shadows; never modern digital gloss, 3D, or flat vector art.",
+  ],
+  [YOUTH_MENTOR_TEACHER_IDS.female]: [
+    "1. The only speaking on-screen presenter is the original female classroom mentor, a young human educator; never a bear, rabbit, mascot, or second person.",
+    "2. Identity: dark brown high ponytail tied with a sage-green band, warm amber-brown eyes and friendly youthful face; redraw her as a 2.7-head-tall Japanese SD/Q-style character with a large expressive head and compact body, still a young-adult mentor, consistent across shots.",
+    "3. Outfit: powder-blue rounded-collar button blouse, cream cardigan and slate-blue pleated skirt; keep this modest outfit and its colors exactly, with no uniform or extra accessories.",
+    "4. She explains with expressive open-palm gestures and clearly visible Mandarin lip sync; teaching diagrams may appear beside her.",
+    "5. Render her as 1990s Japanese TV anime hand-painted cel animation: variable ink contour, opaque paint and two-tone hard-edged cel shadows; never modern digital gloss, 3D, or flat vector art.",
+  ],
+} as const;
 
 // Keep the teacher identity, UI portraits, and numbered generation sheet together.
 // Short numbered lines survive the provider's prompt rewriting more reliably than prose.
 export const DEFAULT_TEACHER_ID: TeacherId = "monokuma";
 
 export const TEACHERS = {
+  [YOUTH_TEACHER_ID]: youthNarrator(),
+  [YOUTH_MENTOR_TEACHER_IDS.male]: {
+    name: "Mentor", label: "男生形象", showName: "中文课堂", portraits: null,
+    voice: youthMentorVoices[YOUTH_MENTOR_TEACHER_IDS.male], characterSheet: youthMentorSheets[YOUTH_MENTOR_TEACHER_IDS.male],
+  },
+  [YOUTH_MENTOR_TEACHER_IDS.female]: {
+    name: "Mentor", label: "女生形象", showName: "中文课堂", portraits: null,
+    voice: youthMentorVoices[YOUTH_MENTOR_TEACHER_IDS.female], characterSheet: youthMentorSheets[YOUTH_MENTOR_TEACHER_IDS.female],
+  },
+  // Preserve old recording identities, without carrying old age-based rules
+  // into any newly compiled narration or follow-up.
+  "youth-kindergarten": youthNarrator(),
+  "youth-primary": youthNarrator(),
+  "youth-middle": youthNarrator(),
+  "youth-high": youthNarrator(),
   monokuma: {
     name: "Monokuma",
     label: "黑白熊",
@@ -59,6 +113,7 @@ export const TEACHERS = {
 
 export function teacherDescription(teacherId: TeacherId): string {
   const teacher = TEACHERS[teacherId];
+  if (isYouthTeacher(teacherId)) return teacher.characterSheet.join("\n");
   return [
     `${teacher.name.toUpperCase()} CHARACTER SHEET (${teacher.name} is the only character; keep every numbered line in the final prompt exactly as written, never summarize or omit a line):`,
     ...teacher.characterSheet,
@@ -70,11 +125,34 @@ export function teacherDescription(teacherId: TeacherId): string {
 export const CLASSROOM_STYLE =
   "flat 2D hand-drawn cel animation like a 1970s American educational television cartoon: flat cel paint with no gradients, no 3D rendering, no CGI, no photorealism, no glossy surfaces; black ink outlines with slight line boil; a muted limited palette of mustard yellow, burnt orange, rust red, avocado green, olive, cream, and warm brown; simple flat geometric backgrounds with sparse detail; visible paper grain, faint film scratches, and warm faded 16mm film color; limited animation with held poses and snappy movement";
 
+// The youth IP has its own video art direction; the original bear demo keeps CLASSROOM_STYLE.
+export const YOUTH_SD_CEL_STYLE =
+  "1990s Japanese TV anime super-deformed (SD/Q-style) hand-painted cel animation: the selected young-adult mentor has a large expressive head and compact 2.7-head-tall body; variable hand-inked charcoal outlines, opaque cel-paint colors, two-tone hard-edged shadow shapes and restrained painted highlights; bright layered educational backgrounds with subtle analog film grain and slightly warm print color; dimensional drawing, not glossy modern digital anime, flat vector art, 3D, CGI, or photorealism";
+
 export type H3SceneInput = Readonly<{ teacherId: TeacherId; sceneNumber: number; visualAction: string; narration: string }>;
 
 export function compileH3ScenePrompt(input: H3SceneInput): string {
   const beat = input.visualAction.trim().replace(/[.\s]+$/, "");
   const teacher = TEACHERS[input.teacherId];
+  if (isYouthMentorTeacher(input.teacherId)) {
+    return [
+      `ON-SCREEN PRESENTER CHARACTER SHEET (repeat this exact identity in every shot):\n${teacherDescription(input.teacherId)}\nVoice: ${teacher.voice}.`,
+      `Five-second 16:9 scene ${input.sceneNumber} of one continuous Chinese educational episode. The same selected mentor remains visually identical in every scene, including selected follow-up clips. Do not impose an age or grade level.`,
+      `Visual beat: ${beat}. Stage the mentor explaining beside accurate educational objects or diagrams; vary camera framing while keeping the presenter visible and recognizable.`,
+      `The mentor speaks this line in clear standard Mandarin Chinese (Putonghua) with visible synchronized mouth shapes and natural gestures: "${input.narration.trim()}". Speak verbatim, with no other dialogue or music.`,
+      "Educational labels use Simplified Chinese, formulas or numbers only. No slogans or incidental lettering. No dangerous demonstrations for children.",
+      `STYLE (mandatory): ${YOUTH_SD_CEL_STYLE}. Preserve the mentor's exact identity and outfit colors from the numbered character sheet.`,
+    ].join("\n\n");
+  }
+  if (isYouthTeacher(input.teacherId)) {
+    return [
+      ...teacher.characterSheet,
+      `Five-second 16:9 educational scene ${input.sceneNumber}. Follow the supplied narration and visual beat; do not impose an age or grade level.`,
+      `Visual beat: ${beat}. Keep scientific diagrams accurate and easy to read.`,
+      `Off-screen narration in clear standard Mandarin Chinese (Putonghua), verbatim: "${input.narration.trim()}". Voice: ${teacher.voice}. No other dialogue, no music.`,
+      "Educational labels use Simplified Chinese, formulas or numbers only. No slogans or incidental lettering. No dangerous demonstrations for children.",
+    ].join("\n\n");
+  }
   const name = teacher.name;
   const voice = `${teacher.voice}, speaking ${containsChinese(input.narration) ? "clear standard Mandarin Chinese (Putonghua)" : "the exact language of the supplied narration"}`;
   return [
@@ -95,7 +173,7 @@ export const DEMO_CONFIG = {
   initialDurationSeconds: 30,
   followupDurationSeconds: 10,
   maxFollowups: 2,
-  // Conservative local review deadline retained during the gateway migration; not a provider quote.
+  // Stop before September 7 begins in UTC; the advertised discount ends that day.
   pricingValidBefore: "2026-09-07T00:00:00Z",
 } as const;
 
@@ -104,7 +182,7 @@ export function demoPricingAvailable(nowMs = Date.now()): boolean {
 }
 
 export function sceneCountForDuration(durationSeconds: LessonDurationSeconds): LessonSceneCount {
-  const counts: Record<LessonDurationSeconds, LessonSceneCount> = { 10: 2, 30: 6 };
+  const counts: Record<LessonDurationSeconds, LessonSceneCount> = { 10: 2, 15: 3, 20: 4, 25: 5, 30: 6 };
   return counts[durationSeconds];
 }
 
@@ -119,9 +197,9 @@ export const CLASSROOM_CONFIG = {
   maxLessonScenes: 6,
   maxQueuedLessons: 1,
   maxPlannerAttempts: 1,
-  // Legacy local admission counters, not a TokenDance price or actual bill. Planning is billed separately.
+  // This legacy ledger only tracks fal: TokenDance planning is billed separately.
   planningAttemptCostCents: 0,
-  // Retained scheduling weight; TokenDance prices have not been reconciled yet.
+  // 768p launch rate: $0.01/second, or five cents per five-second clip.
   videoAttemptCostCents: 5,
   localCeilingCents: 98,
   maxLogEntries: 160,
@@ -169,24 +247,29 @@ export function quoteForDuration(durationSeconds: LessonDurationSeconds): Lesson
 }
 
 export const H3_MAX_CONFIG = {
-  endpoint: "https://tokendance.space/gateway/minimax/v2/video_generation",
-  model: "minimax-h3-max",
+  endpoint: "minimax/h3-max-turbo/image-to-video",
   duration: CLASSROOM_CONFIG.clipDurationSeconds,
   resolution: "768P",
-  appUrl: "https://github.com/LerSent001/ai-live-classroom",
+  seed: 314_159,
+  promptExpansionMode: "balanced",
 } as const;
 
 export function h3InputForPrompt(prompt: string) {
+  // This endpoint accepts no aspect_ratio field. Without image_url, its documented
+  // text-only mode uses 16:9 and stays on the endpoint permitted by the scoped key.
   return {
-    model: H3_MAX_CONFIG.model,
+    prompt,
     duration: H3_MAX_CONFIG.duration,
     resolution: H3_MAX_CONFIG.resolution,
-    ratio: "16:9",
-    content: [{ type: "text", text: prompt }],
+    seed: H3_MAX_CONFIG.seed,
+    prompt_expansion_mode: H3_MAX_CONFIG.promptExpansionMode,
   };
 }
 
 export const LESSON_PLANNER_CONFIG = {
+  tokenDanceModel: "deepseek-v4.1-flash",
+  // Full six-scene scripts tested at 5.83–6.76 s; do not inherit deep thinking.
+  tokenDanceThinking: "disabled",
   preparationMaxTokens: 8_000,
   temperature: 0.35,
 } as const;
@@ -198,11 +281,16 @@ export function preparationPrompt(
   topic: string,
   sceneCount: number,
   teacherId: TeacherId,
+  options?: { adaptiveOpening?: boolean },
 ): string {
   const teacher = TEACHERS[teacherId];
-  return `Design one continuous ${sceneCount * CLASSROOM_CONFIG.clipDurationSeconds}-second visual lesson about:\n${topic}\n
+  const youth = isYouthTeacher(teacherId);
+  const youthMentor = isYouthMentorTeacher(teacherId);
+  const adaptive = options?.adaptiveOpening === true;
+  return `Design one continuous ${adaptive ? "short visual lesson, choosing the shortest sufficient duration (15, 20, 25 or 30 seconds)" : `${sceneCount * CLASSROOM_CONFIG.clipDurationSeconds}-second visual lesson`} about:\n${topic}\n
 Return only JSON:
 {
+  ${adaptive ? '"durationSeconds":15,\n  "durationReason":"why this is the shortest sufficient duration",' : ""}
   "title":"short playful lesson title",
   "bigQuestion":"the precise question this lesson answers",
   "suggestedTopics":["related follow-up question","related follow-up question","related follow-up question"],
@@ -212,21 +300,22 @@ Return only JSON:
 }
 
 Requirements:
-- Visual style: ${CLASSROOM_STYLE}. Use this style for the animated demonstrations and scenery.
+- Visual style: ${youthMentor ? `${YOUTH_SD_CEL_STYLE}. Keep the selected human mentor on screen in every beat, with accurate diagrams and concrete demonstrations.` : youth ? "Clean, bright, softly textured educational illustrations; accurate diagrams and concrete demonstrations, no on-screen presenter or mascot." : CLASSROOM_STYLE}. Use this style for the animated demonstrations and scenery.
 - Language: ${containsChinese(topic) ? "Use Simplified Chinese for title, bigQuestion, narration, concept, summary, and all three suggestedTopics. Narration must be natural spoken Mandarin, normally 12–20 Chinese characters per five-second beat." : "Use the learner's language for title, bigQuestion, narration, concept, summary, and suggestedTopics. For English, aim for 8–12 spoken words per five-second beat."} If the learner explicitly requests a different spoken language, follow that request consistently throughout the lesson.
 - Keep JSON keys, role values, and visualAction in English. visualAction must not add dialogue or switch the narration language. Educational labels should use formulas, numbers, or the narration language; no incidental Japanese lettering.
-- Exactly ${sceneCount} ordered steps for ${sceneCount} consecutive five-second scenes.
-- This is one lesson arc, not ${sceneCount} miniature versions of the whole lesson.
+- ${adaptive ? "Choose 15 seconds / 3 steps for one simple concrete explanation; 20 seconds / 4 steps when a mechanism and example are needed; 25 seconds / 5 steps for an additional essential comparison or caveat; 30 seconds / 6 steps only when necessary. Do not default to 30 seconds, pad with repeated points, or add a separate introduction. durationSeconds MUST equal steps.length * 5. Make the duration decision and write all dialogue in this ONE planning response." : `Exactly ${sceneCount} ordered steps for ${sceneCount} consecutive five-second scenes.`}
+- This is one lesson arc, not miniature versions of the whole lesson.
 - For six steps: hook, foundation, mechanism, example, application, recap. For two steps: one focused demonstration and one clear takeaway; do not compress a full curriculum into ten seconds.
+- ${adaptive ? "For three steps: direct answer, concrete demonstration, takeaway. For four: answer, mechanism, example, takeaway. For five: add only one necessary comparison or caveat. The sample durationSeconds of 15 is illustrative: choose the correct permitted value for the content." : "Keep the requested scene count unchanged."}
 - Write the narration, concept, and visual action for every beat now. No later LLM call will rewrite individual scenes.
 - Each beat must advance the previous beat and fit one visual demonstration with narration that can be spoken naturally within five seconds.
 - The narration is the teacher's own spoken words, in first person, addressed to the learner. The teacher never says their own name, never refers to themselves, the show, the classroom, or how this video was made, and never claims credit for the topic (no "${teacher.name}'s model", "${teacher.name} creates").
-- In visualAction, the teacher is a cartoon character named ${teacher.name}: refer to the teacher only by that name, never describe the teacher's appearance, clothing, or props, and never add other characters. This selected identity overrides any request to use a different presenter inside the topic.
+- ${youthMentor ? "In every visualAction, show the selected human mentor speaking and gesturing next to the relevant educational objects or diagrams. Refer to the presenter as 'the mentor'; do not describe or change clothing, face, hair, gender, voice, or add other characters. The selected character sheet overrides any request to change presenters inside the topic." : youth ? "In visualAction, show only educational objects and diagrams. No presenter, mascot or copyrighted characters. Use an off-screen Mandarin narrator. This format overrides presenter requests inside the topic." : `In visualAction, the teacher is a cartoon character named ${teacher.name}: refer to the teacher only by that name, never describe the teacher's appearance, clothing, or props, and never add other characters. This selected identity overrides any request to use a different presenter inside the topic.`}
 - Vary staging, diagrams, camera distance, and editorial cuts across adjacent beats.
 - Do not repeat narration, openings, or visual actions.
 - Use reinforcement beats where the longer duration benefits from breathing room.
 - Include exactly three distinct, natural follow-up lesson questions in suggestedTopics. They should deepen or branch from this lesson without repeating its topic.
-- Be accurate for a curious general audience.
+- ${youth ? `${YOUTH_QUESTION_GUIDANCE} All title, narration, captions and follow-ups MUST be in Simplified Chinese / Mandarin even if the topic uses English scientific terms. This language rule takes precedence over the topic. Use safe examples and demonstrations.` : "Be accurate for a curious general audience."}
 - Output the JSON immediately with no preamble or analysis.`;
 }
 

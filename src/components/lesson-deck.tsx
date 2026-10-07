@@ -1,7 +1,9 @@
 "use client";
 
 import { TEACHERS } from "@/lib/classroom-config";
+import { isYouthTeacher } from "@/lib/youth-classroom";
 import { TeacherPortrait } from "@/components/teacher-portrait";
+import { waitForMediaPlay, watchMediaLoad } from "@/components/media-watchdog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   beginHandoff,
@@ -41,6 +43,7 @@ type PendingActivation = Readonly<{
 }>;
 
 export type LessonPlaybackIntent = Readonly<{
+  runtimeId?: string;
   epoch: number;
   running: boolean;
   status: "idle" | "priming" | "playing" | "buffering" | "ended";
@@ -59,7 +62,10 @@ export type SignoffState =
     }>
   | null;
 
+export type LessonPlaybackIssue = Readonly<{ kind?: "media" | "gesture"; message: string; retry(): void }>;
+
 type LessonDeckProps = Readonly<{
+  playbackEnabled?: boolean;
   teacherId: TeacherId;
   phase: "idle" | "preparing" | "priming" | "live" | "buffering" | "draining" | "complete";
   signoff: SignoffState;
@@ -67,6 +73,8 @@ type LessonDeckProps = Readonly<{
   intent: LessonPlaybackIntent;
   onEvent(report: PlaybackReport): void;
   music: Readonly<{ enabled: boolean; toggle(): void }>;
+  onExit?(): void;
+  onPlaybackIssue?(issue: LessonPlaybackIssue | null): void;
 }>;
 
 function enoughData(video: HTMLVideoElement): boolean {
@@ -114,6 +122,7 @@ function TelevisionStatic() {
 
 function phaseMessage(
   phase: LessonDeckProps["phase"],
+  chinese = false,
 ): Readonly<{ title: string; detail: string }> | null {
   switch (phase) {
     case "idle":
@@ -122,9 +131,9 @@ function phaseMessage(
     case "live":
       return null;
     case "buffering":
-      return { title: "Please stand by", detail: "The next scene is decoding" };
+      return chinese ? { title: "请稍候", detail: "正在缓冲下一段视频" } : { title: "Please stand by", detail: "The next scene is decoding" };
     case "draining":
-      return { title: "Please stand by", detail: "Finishing the scenes already on tape" };
+      return chinese ? { title: "请稍候", detail: "正在完成本段课程" } : { title: "Please stand by", detail: "Finishing the scenes already on tape" };
     case "complete":
       return null;
     default: {
@@ -160,6 +169,13 @@ function TuningScreen({ teacherId }: Readonly<{ teacherId: TeacherId }>) {
 }
 
 function SignoffCard({ signoff, teacherId }: Readonly<{ signoff: SignoffState; teacherId: TeacherId }>) {
+  if (isYouthTeacher(teacherId)) return (
+    <div className="youth-screen-message">
+      <strong>本节课程已结束</strong>
+      {signoff?.kind === "queued" && <span>即将播放：{signoff.topic}</span>}
+      {signoff?.kind === "picks" && <span>可以在课程面板中选择继续学习的内容</span>}
+    </div>
+  );
   return (
     <div className="signoff-card">
       <span className="signoff-rays" aria-hidden="true" />
@@ -194,7 +210,8 @@ function SignoffCard({ signoff, teacherId }: Readonly<{ signoff: SignoffState; t
   );
 }
 
-export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, teacherId }: LessonDeckProps) {
+export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, onExit, onPlaybackIssue, teacherId, playbackEnabled = true }: LessonDeckProps) {
+  const youth = isYouthTeacher(teacherId);
   const videoRefs = useRef<[HTMLVideoElement | null, HTMLVideoElement | null, HTMLVideoElement | null]>([
     null,
     null,
@@ -206,10 +223,11 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     null,
   ]);
   const activeRef = useRef<Active | null>(null);
+  const finishedSceneIdsRef = useRef(new Set<SceneId>());
   const intentRef = useRef(intent);
   const tokenRef = useRef(0);
   const skipTimerRef = useRef<number | null>(null);
-  const previousEpochRef = useRef(intent.epoch);
+  const previousEpochRef = useRef(`${intent.runtimeId ?? "legacy"}:${intent.epoch}`);
   const waitingHandoffRef = useRef<WaitingHandoff | null>(null);
   const pendingActivationRef = useRef<PendingActivation | null>(null);
   const pendingGestureRef = useRef<Readonly<{ segment: GeneratedClientSegment; slot: Slot; activation: Activation }> | null>(null);
@@ -231,6 +249,11 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
   const [justTuned, setJustTuned] = useState(false);
   const [firstFramePainted, setFirstFramePainted] = useState(false);
   const landedRef = useRef(false);
+  const failedSlotRef = useRef<Slot | null>(null);
+  const mediaTimersRef = useRef<(null | (() => void))[]>([null, null, null]);
+  const loadAttemptsRef = useRef(new Map<SceneId, number>());
+  const loadFailuresRef = useRef<(null | string)[]>([null, null, null]);
+  const mediaFailureRef = useRef<(slot: Slot) => void>(() => {});
 
   if (powered !== previouslyPowered) {
     setPreviouslyPowered(powered);
@@ -281,7 +304,11 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     const video = videoRefs.current[slot];
     const current = assignmentsRef.current[slot];
     if (!video || current?.segment.id === segment.id || activeRef.current?.slot === slot) return;
+    mediaTimersRef.current[slot]?.();
+    loadFailuresRef.current[slot] = null;
+    loadAttemptsRef.current.set(segment.id, (loadAttemptsRef.current.get(segment.id) ?? 0) + 1);
     tokenRef.current += 1;
+    const token = tokenRef.current;
     assignmentsRef.current[slot] = {
       segment,
       ready: false,
@@ -292,15 +319,68 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     video.src = segment.videoUrl;
     video.preload = "auto";
     video.load();
+    mediaTimersRef.current[slot] = watchMediaLoad({
+      current: () => assignmentsRef.current[slot]?.token === token,
+      ready: () => assignmentsRef.current[slot]?.ready === true,
+      timeout: () => mediaFailureRef.current(slot),
+    });
     setReconcileNonce((value) => value + 1);
   }, []);
+
+  const handleMediaFailure = useCallback((slot: Slot) => {
+    const assignment = assignmentsRef.current[slot];
+    if (!assignment) return;
+    mediaTimersRef.current[slot]?.();
+    if (activeRef.current?.slot === slot) { activeRef.current = null; setBuffering(true); }
+    assignmentsRef.current[slot] = { ...assignment, ready: false };
+    const attempts = loadAttemptsRef.current.get(assignment.segment.id) ?? 1;
+    if (attempts < 3) {
+      const timer = window.setTimeout(() => {
+        if (assignmentsRef.current[slot]?.token !== assignment.token) return;
+        assignmentsRef.current[slot] = null;
+        load(slot, assignment.segment);
+      }, attempts * 500);
+      mediaTimersRef.current[slot] = () => window.clearTimeout(timer);
+      return;
+    }
+    const message = youth ? "视频连接暂未恢复，可以重新加载原视频；不会重新生成。" : "Video loading has not recovered. Reload the original video.";
+    loadFailuresRef.current[slot] = message;
+    failedSlotRef.current = slot;
+    setMediaError(message);
+  }, [load, youth]);
+  useEffect(() => { mediaFailureRef.current = handleMediaFailure; }, [handleMediaFailure]);
+
+  const retryFailedMedia = useCallback(() => {
+    const slot = failedSlotRef.current;
+    const assignment = slot === null ? null : assignmentsRef.current[slot];
+    if (slot === null || !assignment) return;
+    if (activeRef.current?.slot === slot) activeRef.current = null;
+    pendingGestureRef.current = null;
+    loadAttemptsRef.current.delete(assignment.segment.id);
+    assignmentsRef.current[slot] = null;
+    setMediaError(null);
+    setGestureRequired(false);
+    setBuffering(activeRef.current === null);
+    load(slot, assignment.segment);
+  }, [load]);
 
   const preloadRunway = useCallback(() => {
     const current = intentRef.current;
     const desired = [current.playing, ...current.ready]
-      .filter((segment): segment is GeneratedClientSegment => segment?.kind === "generated")
-      .slice(0, 3);
+      .filter((segment): segment is GeneratedClientSegment => segment?.kind === "generated" && !finishedSceneIdsRef.current.has(segment.id))
+      .slice(0, youth ? 2 : 3);
     const desiredIds = new Set(desired.map((segment) => segment.id));
+    if (youth) {
+      for (const slot of SLOTS) {
+        const assigned = assignmentsRef.current[slot];
+        if (!assigned || slot === activeRef.current?.slot || desiredIds.has(assigned.segment.id)) continue;
+        const video = videoRefs.current[slot];
+        if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+        mediaTimersRef.current[slot]?.();
+        loadFailuresRef.current[slot] = null;
+        assignmentsRef.current[slot] = null;
+      }
+    }
     for (const segment of desired) {
       if (assignmentSlot(segment.id) !== null) continue;
       const activeSlot = activeRef.current?.slot ?? null;
@@ -312,16 +392,17 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
         });
       if (slot !== undefined) load(slot, segment);
     }
-  }, [assignmentSlot, load]);
+  }, [assignmentSlot, load, youth]);
 
   const nextAfter = useCallback((activeId: SceneId): ClientPlaybackSegment | null => {
-    return intentRef.current.ready.find((segment) => segment.id !== activeId) ?? null;
+    return intentRef.current.ready.find((segment) => segment.id !== activeId && !finishedSceneIdsRef.current.has(segment.id)) ?? null;
   }, []);
 
   const activateGenerated = useCallback(async (
     segment: GeneratedClientSegment,
     activation: Activation,
   ) => {
+    if (finishedSceneIdsRef.current.has(segment.id)) return;
     let slot = assignmentSlot(segment.id);
     if (slot === null) {
       const activeSlot = activeRef.current?.slot ?? null;
@@ -331,6 +412,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     const assignment = slot === null ? null : assignmentsRef.current[slot];
     const video = slot === null ? null : videoRefs.current[slot];
     if (!assignment?.ready || assignment.segment.id !== segment.id || !video || slot === null) {
+      if (slot !== null && loadFailuresRef.current[slot]) { failedSlotRef.current = slot; setMediaError(loadFailuresRef.current[slot]); }
       pendingActivationRef.current = { segment, activation };
       setBuffering(true);
       return;
@@ -340,7 +422,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     pendingActivationRef.current = null;
     waitingHandoffRef.current = null;
     try {
-      await video.play();
+      await waitForMediaPlay(() => video.play());
       if (assignmentsRef.current[slot]?.token !== assignment.token) {
         video.pause();
         return;
@@ -367,10 +449,29 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
       setCaption(segment.captions[0]?.text ?? null);
       reportActivation(segment, activation);
       preloadRunway();
-    } catch {
-      setGestureRequired(true);
+    } catch (error) {
+      if (assignmentsRef.current[slot]?.token !== assignment.token) return;
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setGestureRequired(true);
+      } else {
+        video.pause();
+        pendingGestureRef.current = null;
+        setGestureRequired(false);
+        pendingActivationRef.current = { segment, activation };
+        handleMediaFailure(slot);
+      }
     }
-  }, [assignmentSlot, load, preloadRunway, reportActivation]);
+  }, [assignmentSlot, handleMediaFailure, load, preloadRunway, reportActivation]);
+
+  const resumePlayback = useCallback(() => {
+    const pending = pendingGestureRef.current;
+    if (pending) void activateGenerated(pending.segment, pending.activation);
+  }, [activateGenerated]);
+  useEffect(() => {
+    onPlaybackIssue?.(mediaError ? { kind: "media", message: mediaError, retry: retryFailedMedia }
+      : gestureRequired ? { kind: "gesture", message: "视频已就绪，请点击播放并开启声音。", retry: resumePlayback } : null);
+  }, [mediaError, gestureRequired, onPlaybackIssue, retryFailedMedia, resumePlayback]);
+  useEffect(() => () => onPlaybackIssue?.(null), [onPlaybackIssue]);
 
   const activateSkipped = useCallback((
     segment: Extract<ClientPlaybackSegment, { kind: "skipped" }>,
@@ -386,6 +487,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
     skipTimerRef.current = window.setTimeout(() => {
       const active = activeRef.current;
       if (!active || active.segment.id !== segment.id) return;
+      finishedSceneIdsRef.current.add(segment.id);
       activeRef.current = null;
       const next = nextAfter(segment.id);
       if (!next) {
@@ -408,24 +510,33 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
   const reconcile = useCallback(() => {
     preloadRunway();
     const current = intentRef.current;
-    if (activeRef.current || pendingActivationRef.current) return;
+    if (activeRef.current || pendingActivationRef.current || pendingGestureRef.current) return;
     if (!current.running || current.status === "ended") return;
-    if (current.ready.length < current.requiredRunway) {
-      setBuffering(current.ready.length > 0 || current.status === "buffering");
+    // A remounted player must resume the server's playing scene, even when the
+    // ready queue is empty (particularly the final clip). No generation occurs.
+    if (current.playing && !finishedSceneIdsRef.current.has(current.playing.id)) {
+      const activation: Activation = { kind: "started" };
+      if (current.playing.kind === "skipped") activateSkipped(current.playing, activation);
+      else void activateGenerated(current.playing, activation);
+      return;
+    }
+    const ready = current.ready.filter(segment => !finishedSceneIdsRef.current.has(segment.id));
+    if (ready.length < current.requiredRunway) {
+      setBuffering(ready.length > 0 || current.status === "buffering");
       return;
     }
     if (!landedRef.current) {
-      const openers = current.ready.slice(0, Math.min(2, Math.max(1, current.requiredRunway)));
+      const openers = ready.slice(0, Math.min(2, Math.max(1, current.requiredRunway)));
       const requiredDecodes = openers.filter((segment) => segment.kind === "generated").length;
       const decodedReady = assignmentsRef.current.filter(
         (assignment) => assignment?.ready,
       ).length;
       if (decodedReady < requiredDecodes) {
-        setBuffering(current.ready.length > 0);
+        setBuffering(ready.length > 0);
         return;
       }
     }
-    const first = current.ready[0];
+    const first = ready[0];
     if (!first) return;
     const activation: Activation = { kind: "started" };
     if (first.kind === "skipped") activateSkipped(first, activation);
@@ -433,11 +544,14 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
   }, [activateGenerated, activateSkipped, preloadRunway]);
 
   useEffect(() => {
-    intentRef.current = intent;
-    if (previousEpochRef.current !== intent.epoch) {
-      previousEpochRef.current = intent.epoch;
+    intentRef.current = { ...intent, running: intent.running && playbackEnabled };
+    const playbackEpoch = `${intent.runtimeId ?? "legacy"}:${intent.epoch}`;
+    if (previousEpochRef.current !== playbackEpoch) {
+      previousEpochRef.current = playbackEpoch;
       if (skipTimerRef.current !== null) window.clearTimeout(skipTimerRef.current);
       for (const slot of SLOTS) {
+        mediaTimersRef.current[slot]?.();
+        loadFailuresRef.current[slot] = null;
         const video = videoRefs.current[slot];
         if (video) {
           video.pause();
@@ -447,6 +561,8 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
         assignmentsRef.current[slot] = null;
       }
       activeRef.current = null;
+      finishedSceneIdsRef.current.clear();
+      loadAttemptsRef.current.clear();
       waitingHandoffRef.current = null;
       pendingActivationRef.current = null;
       pendingGestureRef.current = null;
@@ -459,19 +575,24 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
       setGestureRequired(false);
       setCaption(null);
       setMediaError(null);
-      return;
+      failedSlotRef.current = null;
+      // Prime the new epoch immediately. Waiting for another snapshot can
+      // deadlock a demand-rendered scene whose first media fails to decode.
     }
     reconcile();
-  }, [intent, reconcile, reconcileNonce]);
+  }, [intent, playbackEnabled, reconcile, reconcileNonce]);
 
   useEffect(() => () => {
     if (skipTimerRef.current !== null) window.clearTimeout(skipTimerRef.current);
+    for (const cancel of mediaTimersRef.current) cancel?.();
   }, []);
 
   const markReady = useCallback((slot: Slot) => {
     const assignment = assignmentsRef.current[slot];
     const video = videoRefs.current[slot];
-    if (!assignment || assignment.ready || !video || !enoughData(video)) return;
+    if (!assignment || assignment.ready || !video || video.error || !enoughData(video)) return;
+    mediaTimersRef.current[slot]?.();
+    loadFailuresRef.current[slot] = null;
     assignmentsRef.current[slot] = { ...assignment, ready: true };
     onEvent({
       kind: "media-ready",
@@ -491,6 +612,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
   const finish = useCallback((slot: Slot) => {
     const active = activeRef.current;
     if (!active || active.slot !== slot) return;
+    finishedSceneIdsRef.current.add(active.segment.id);
     activeRef.current = null;
     const next = nextAfter(active.segment.id);
     if (!next) {
@@ -532,23 +654,20 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
 
   const message = warning || mediaError
     ? null
-    : phaseMessage(buffering && stalledLong && phase === "live" ? "buffering" : phase);
+    : phaseMessage(buffering && stalledLong && phase === "live" ? "buffering" : phase, youth);
   const surfing = phase === "preparing" || phase === "priming";
 
   return (
     <div className={`lesson-stage lesson-stage-${phase} ${powered ? "" : "lesson-stage-off"}`}>
       {SLOTS.map((slot) => (
         <video
-          aria-label={`Lesson video slot ${slot + 1}`}
+          aria-label={youth ? `课程视频 ${slot + 1}` : `Lesson video slot ${slot + 1}`}
           className={`lesson-video ${visibleSlot === slot ? "lesson-video-visible" : ""}`}
           key={slot}
           muted={muted}
           onCanPlay={() => markReady(slot)}
           onEnded={() => finish(slot)}
-          onError={() => {
-            setMediaError(`Scene ${assignmentsRef.current[slot]?.segment.number ?? "video"} could not be decoded.`);
-            setBuffering(true);
-          }}
+          onError={() => handleMediaFailure(slot)}
           onLoadedData={() => markReady(slot)}
           onPlaying={() => {
             setBuffering(false);
@@ -571,6 +690,8 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
         >
           {phase === "complete" ? (
             <SignoffCard signoff={signoff} teacherId={teacherId} />
+          ) : youth ? (
+            <div className="youth-screen-message"><strong>{surfing ? "正在准备课程" : "正在缓冲视频"}</strong><span>视频就绪后自动播放</span></div>
           ) : surfing || !firstFramePainted ? (
             <TuningScreen teacherId={teacherId} />
           ) : (
@@ -579,7 +700,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
         </div>
       )}
 
-      {justTuned && (
+      {justTuned && !youth && (
         <div className="channel-ident" aria-hidden="true">
           <span>CH 13</span>
           <strong>{TEACHERS[teacherId].showName}</strong>
@@ -588,13 +709,13 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
 
       {!powered && <div className="tv-off" aria-hidden="true" />}
 
-      {poweringOn && <div className="tv-power-on" aria-hidden="true" />}
+      {poweringOn && !youth && <div className="tv-power-on" aria-hidden="true" />}
 
       {skipped && (
         <div className="lesson-card-fallback">
-          <span>Scene {skipped.number} · illustrated recap</span>
+          <span>{youth ? `第 ${skipped.number} 段 · 文字回顾` : `Scene ${skipped.number} · illustrated recap`}</span>
           <strong>{skipped.summary}</strong>
-          <small>The H3 scene failed, so the planned lesson is shown locally.</small>
+          <small>{youth ? "这段视频生成失败，暂时显示课程文字。" : "The H3 scene failed, so the planned lesson is shown locally."}</small>
         </div>
       )}
 
@@ -607,12 +728,14 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
 
       {(warning || mediaError) && (
         <div className="stage-warning">
-          <strong>{mediaError ? "Playback issue" : "Setup needed"}</strong>
+          <strong>{youth ? (mediaError ? "播放遇到问题" : "课程提示") : (mediaError ? "Playback issue" : "Setup needed")}</strong>
           <span>{mediaError ?? warning}</span>
+          {mediaError && !onPlaybackIssue && <button type="button" onClick={retryFailedMedia}>{youth ? "重新加载视频（不重新生成）" : "Reload video (no regeneration)"}</button>}
+          {onExit && !onPlaybackIssue && <button type="button" onClick={onExit}>{youth ? "退出课程" : "Exit lesson"}</button>}
         </div>
       )}
 
-      {gestureRequired && (
+      {gestureRequired && !onPlaybackIssue && (
         <button
           className="resume-button"
           onClick={() => {
@@ -621,7 +744,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
           }}
           type="button"
         >
-          ▶ Continue lesson
+          {youth ? "继续播放" : "▶ Continue lesson"}
         </button>
       )}
 
@@ -629,21 +752,21 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, te
 
       <div className="sound-controls">
         <button
-          aria-label={muted ? "Turn scene sound on" : "Mute scene sound"}
+          aria-label={youth ? (muted ? "开启声音" : "静音") : (muted ? "Turn scene sound on" : "Mute scene sound")}
           className="sound-toggle"
           onClick={() => setMuted((current) => !current)}
           type="button"
         >
-          {muted ? "Voice off" : "Voice on"}
+          {youth ? (muted ? "开启声音" : "静音") : (muted ? "Voice off" : "Voice on")}
         </button>
-        <button
+        {!youth && <button
           aria-label={music.enabled ? "Turn music off" : "Turn music on"}
           className="sound-toggle"
           onClick={music.toggle}
           type="button"
         >
           {music.enabled ? "Music on" : "Music off"}
-        </button>
+        </button>}
       </div>
     </div>
   );
