@@ -9,9 +9,9 @@ Turn a question into a short AI-generated video lesson in an interactive 3D clas
 - Chinese-language video lessons with follow-up questions.
 - An anime-style classroom, 3D mentor and interactive furniture.
 - Network-synchronized wall clock and a perspective campus backdrop.
-- Personal TokenDance wallet authorization, budget checks and saved lesson playback.
+- Saved lessons and playback recovery.
 
-Browsing is free. Generating a lesson requires your own funded TokenDance wallet and may incur charges.
+Exploring the classroom is free. Generating lessons uses API credits—connect your TokenDance wallet and top up your balance if needed before you begin.
 
 ## Run locally
 
@@ -25,7 +25,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). Connect your wallet in the app when you want to generate a lesson; no shared model key is required.
+Open [localhost:3000](http://localhost:3000) to explore the classroom.
 
 ## Deploy
 
