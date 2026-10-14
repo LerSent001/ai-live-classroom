@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "width": 1536,
   "height": 1536,
-  "samples": 48,
+  "samples": 128,
   "denoised": true,
+  "shellOcclusion": true,
   "meshes": [
     {
       "vertices": 3588,
@@ -107,7 +108,7 @@
     }
   ],
   "uvBytes": 535896,
-  "lightmapBytes": 189062,
-  "lightmapSha256": "4dca32136dc8515224df7b9d593085d3f0e05edf542e13d129de5aa744c39152",
+  "lightmapBytes": 143596,
+  "lightmapSha256": "9a46641581050e8f45772959d9971e2b55c8835795fcfb193850fb1d43c0645e",
   "uvSha256": "eed8c2eecdfe72af1b74eac48425a31784c4634c0b41cb441e12a6d1336223b1"
 }

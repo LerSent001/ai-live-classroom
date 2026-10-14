@@ -6,6 +6,7 @@ export const YOUTH_MENTORS = {
   female: { label: "女生形象", asset: "mentor-female-halfbody-v2.png", version: "mentor-female-v2" },
 } as const;
 export type YouthMentorId = keyof typeof YOUTH_MENTORS;
+export const YOUTH_DEFAULT_MENTOR: YouthMentorId = "female";
 
 export function nextYouthMentor(mentor: YouthMentorId): YouthMentorId {
   return mentor === "male" ? "female" : "male";
@@ -13,7 +14,7 @@ export function nextYouthMentor(mentor: YouthMentorId): YouthMentorId {
 
 // A passive DOM image, not part of the WebGL scene or generated lesson content.
 // Next serves a cached, size-appropriate image while retaining the original PNG alpha.
-export function YouthMentorPortrait({ mentor = "male" }: { mentor?: YouthMentorId }) {
+export function YouthMentorPortrait({ mentor = YOUTH_DEFAULT_MENTOR }: { mentor?: YouthMentorId }) {
   const character = YOUTH_MENTORS[mentor];
   return <div className="youth-mentor-portrait" aria-hidden="true" data-youth-portrait={character.version}>
     <Image src={`/youth/characters/${character.asset}`} alt="" width={1024} height={1536}

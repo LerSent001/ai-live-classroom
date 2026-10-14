@@ -1,7 +1,7 @@
 import {
-  Box3, BoxGeometry, BufferGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, PlaneGeometry, Shape,
+  Box3, BoxGeometry, BufferGeometry, CircleGeometry, Color, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, PlaneGeometry, Shape,
   Euler, Group, Matrix4, Mesh, MeshBasicMaterial, Quaternion,
-  SRGBColorSpace, Vector3, type Texture,
+  Vector3, type Texture,
 } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -9,6 +9,7 @@ import { YOUTH_RENDERING } from "@/lib/youth-classroom";
 import { campusMaterials, type CampusMaterial } from "./campus-material";
 import surfaceAtlas from "../../../public/youth/surfaces.json";
 import { classroomWindowGlass } from "./window-glass";
+import { createWallClock } from "./wall-clock";
 
 type Point = readonly [number, number, number];
 
@@ -18,21 +19,24 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
   const room = new Group();
   room.name = "Chinese youth classroom — six desks, static daylight";
   const batches = new Map<CampusMaterial, BufferGeometry[]>();
+  let arrivalDelay = -1;
+  let hoverId = 0;
+  let arrivalBounds: [number, number] = [0, 2.3];
   const ownedTextures: Texture[] = [];
   const palette = campusMaterials(lightMap);
   const material = palette.material;
   const m = {
-    plaster: material("#fffdf7", { map: atlas }), ceiling: material("#f9f5ec", { map: atlas }), sage: material("#a6b8a6", { map: atlas }, .6),
-    sageEdge: material("#859883"), wood: material("#eed8b6", { map: atlas }, .55), trim: material("#c6ae8b", { map: atlas }, .55),
-    metal: material("#85968a"), cream: material("#eeeae0"), dark: material("#293235"),
-    rubber: material("#43504b"), blue: classroomWindowGlass(),
-    sky: new MeshBasicMaterial({ vertexColors: true, side: DoubleSide }),
+    plaster: material("#fff8e8", { map: atlas }), ceiling: material("#f7f0e5", { map: atlas }), sage: material("#a7a7d9", { map: atlas }, .6),
+    sageEdge: material("#7975b0"), wood: material("#f1cb85", { map: atlas }, .55), trim: material("#c39260", { map: atlas }, .55),
+    metal: material("#838bc7"), cream: material("#fff0d9"), dark: material("#302c50"),
+    rubber: material("#484365"), blue: classroomWindowGlass(),
+    sky: new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, depthWrite: false }),
     props: material("#ffffff", { side: DoubleSide }),
     frame: palette.glass("#aeb4b1", { specular: "#5d6a6d", shininess: 25 }), windowShadow: material("#6c7b80"),
     displayGlass: palette.glass("#202629", { specular: "#aab8b9", shininess: 68, emissive: "#11191a", emissiveIntensity: .1 }),
     chalkboard: material("#e6eadd", { map: atlas }),
     light: material("#fff9e1", { emissive: "#fff3cf", emissiveIntensity: .65 }),
-    paper: material("#ffefcf"), book1: material("#94bdae"), book2: material("#7cabc5"), book3: material("#d69579"),
+    paper: material("#fff0c4"), book1: material("#7acbc7"), book2: material("#8794e1"), book3: material("#e79bb9"),
     soil: material("#745c42"), leaf: material("#669b72", { side: DoubleSide }), leafLight: material("#93b980", { side: DoubleSide }),
     furniture: material("#efe1c9", { map: atlas }, .65),
   };
@@ -64,7 +68,7 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
     if (region) atlasUV(flat, region);
     const points = flat.getAttribute("position"), normals = flat.getAttribute("normal"), sourceColor = flat.getAttribute("color");
     const colors = new Float32Array(points.count * 3);
-    const skyTop = new Color("#b4d1e1"), skyBottom = new Color("#edf1ef");
+    const skyTop = new Color("#7c9ce3"), skyBottom = new Color("#d8eff3");
     for (let i = 0; i < points.count; i++) {
       const x = points.getX(i), y = points.getY(i), z = points.getZ(i);
       let shade = .94 + .06 * Math.min(1, y / 2);
@@ -83,6 +87,10 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
       }
     }
     flat.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    const arrival = new Float32Array(points.count * 3);
+    for (let i = 0; i < points.count; i++) arrival.set([arrivalDelay, ...arrivalBounds], i * 3);
+    flat.setAttribute("arrival", new Float32BufferAttribute(arrival, 3));
+    flat.setAttribute("hoverId", new Float32BufferAttribute(new Float32Array(points.count).fill(hoverId), 1));
     batches.set(mat, [...(batches.get(mat) ?? []), flat]);
     geometry.dispose();
   };
@@ -175,25 +183,22 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
   }
 
   // Blackboard: the requested formulas are a single authored texture.
+  hoverId = 1;
   box([-.05, 3.14, -4.29], [8.45, 2.91, 0.12], m.trim, 0.035);
   box([-.05, 3.14, -4.208], [8.25, 2.72, 0.045], m.chalkboard);
   box([-.05, 1.71, -4.09], [8.57, 0.095, 0.28], m.trim, 0.015);
   box([-2.4, 1.79, -4.05], [0.25, 0.095, 0.11], m.paper, 0.015);
   box([3.9, 1.79, -4.05], [0.21, 0.095, 0.11], m.paper, 0.015);
 
-  // Static analog clock, reusing the original classroom's canvas-texture approach.
-  const clockCanvas = document.createElement("canvas"); clockCanvas.width = 256; clockCanvas.height = 256;
-  const ctx = clockCanvas.getContext("2d")!;
-  ctx.fillStyle = "#f1ebdc"; ctx.fillRect(0, 0, 256, 256);
-  ctx.fillStyle = "#39413b"; ctx.font = "21px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  for (let n = 1; n <= 12; n++) { const a = n * Math.PI / 6; ctx.fillText(String(n), 128 + Math.sin(a) * 98, 128 - Math.cos(a) * 98); }
-  ctx.strokeStyle = "#343b36"; ctx.lineWidth = 5; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(79, 105); ctx.lineTo(128, 128); ctx.lineTo(128, 50); ctx.stroke();
-  const clockMap = new CanvasTexture(clockCanvas); clockMap.colorSpace = SRGBColorSpace; ownedTextures.push(clockMap);
+  // Keep the original baked geometry; the detailed dial updates once per second.
+  hoverId = 2;
+  const wallClock = createWallClock(); room.userData.wallClock = wallClock;
+  const clockMap = wallClock.texture; ownedTextures.push(clockMap);
   cylinder([5.35, 4.3, -4.22], 0.43, 0.43, 0.075, m.dark, [Math.PI / 2, 0, 0], 48);
   add(new CircleGeometry(.402, 48), material("#ffffff", { map: clockMap }), [5.35, 4.3, -4.174]);
 
   // Door set INSIDE a real opening. Jambs span the wall thickness; continuous
+  hoverId = 0;
   // wainscot/baseboards stop at the opening rather than crossing the door.
   for (const z of [-3.34, -1.66]) {
     box([6.04, 2.15, z], [.38, 4.3, .12], m.trim);
@@ -223,12 +228,15 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
   box([7.185, 1.49, -2.5], [.025, .065, 2.8], m.cream);
 
   // Bookcase and teacher's podium are static, not extra student seats.
+  arrivalDelay = .10;
+  hoverId = 3;
   const shelfX = -4.7;
   box([shelfX, 0.84, -3.97], [1.22, 1.68, 0.07], m.trim);
   for (const x of [shelfX - 0.61, shelfX + 0.61]) box([x, 0.84, -3.67], [0.07, 1.68, 0.68], m.wood);
   for (const y of [0.06, 0.58, 1.1, 1.65]) box([shelfX, y, -3.67], [1.3, 0.07, 0.68], m.wood);
   authoredProp(props.books, [shelfX - .19, .615, -3.58], [.62, .4, .34], [0, .08, 0]);
   authoredProp(props.books, [shelfX + .1, 1.135, -3.62], [.72, .35, .36], [0, Math.PI - .06, 0]);
+  hoverId = 4;
   box([0.2, 0.66, -1.98], [2.28, 1.3, 0.99], m.wood, 0.022);
   box([0.2, 1.36, -1.98], [2.44, 0.115, 1.14], m.wood, 0.025);
   box([0.2, 0.12, -1.44], [2.33, 0.12, 0.07], m.trim, 0.012);
@@ -267,7 +275,11 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
     });
   }
   for (const x of YOUTH_RENDERING.deskColumns) for (const z of YOUTH_RENDERING.deskRows) {
+    hoverId = 5 + 2 * (YOUTH_RENDERING.deskColumns.indexOf(x) * YOUTH_RENDERING.deskRows.length + YOUTH_RENDERING.deskRows.indexOf(z));
+    arrivalDelay = .22 + YOUTH_RENDERING.deskRows.indexOf(z) * .17 + YOUTH_RENDERING.deskColumns.indexOf(x) * .065;
     furniture(desk, [x, .022, z], [1.58, 1.2, .96], Math.PI);
+    arrivalDelay += .055;
+    hoverId += 1;
     furniture(chair, [x, .022, z + .77], [.86, 1.4, .86], Math.PI);
   }
 
@@ -296,21 +308,30 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
     }
   }
   // Isa Lousberg CC0 foliage: distinct curved leaves, not repeated triangles.
+  arrivalDelay = .76;
+  hoverId = 3;
+  arrivalBounds = [0, 2.8];
   cylinder([-4.68, 1.84, -3.65], .17, .12, .3, m.paper, [0, 0, 0], 20);
   cylinder([-4.68, 1.995, -3.65], .153, .15, .01, m.soil);
   // The plant's authored origin is its root, not the bottom of its hanging vine.
   authoredProp(props.pothos, [-4.68, 1.99, -3.65], [.7, .57, .61], [0, 1.15, 0], "root");
+  hoverId = 17;
   cylinder([-4.65, .24, 2.5], .29, .21, .48, m.paper, [0, 0, 0], 24);
   cylinder([-4.65, .485, 2.5], .27, .26, .012, m.soil);
   authoredProp(props.monstera, [-4.65, .48, 2.5], [1.38, 1.28, 1.3], [0, .3, 0], "root");
 
   for (const x of [-2.85, 2.85]) for (const z of [-1.45, 4.4]) {
+    hoverId = 18 + (x > 0 ? 2 : 0) + (z > 0 ? 1 : 0);
+    arrivalDelay = -1;
     box([x, 5.3, z], [3.25, 0.12, 0.38], m.cream, 0.025);
     box([x, 5.222, z], [3.08, 0.04, 0.29], m.light, 0.012);
   }
 
   // Fixed articulated bracket: slim rectangular housings, visible pivots, dark
   // joint caps and mounting plate. No animation, physics, IK or hidden tower.
+  arrivalDelay = 1.05;
+  hoverId = 22;
+  arrivalBounds = [2.3, 5.5];
   box([-1.65, 5.35, 0], [.67, .1, .6], m.cream, .025);
   cylinder([-1.65, 5.13, 0], .082, .082, .36, m.frame);
   function armLink(a: Point, b: Point, width: number) {
@@ -356,7 +377,12 @@ export function createYouthRoom(atlas: Texture, desk: Group, chair: Group, light
     for (const geometry of geometries) geometry.dispose();
     if (!merged) throw new Error("Unable to batch static classroom geometry");
     const mesh = new Mesh(merged, mat);
+    // Daylight is a background only: real outdoor geometry may be farther away.
+    if (mat === m.sky) { mesh.name = 'Window sky background'; mesh.renderOrder = -100; }
     mesh.castShadow = mat !== m.plaster && mat !== m.ceiling && mat !== m.blue && mat !== m.light && mat !== m.sky;
+    // Offline rays must be blocked by the shell, regardless of the old runtime
+    // shadow-budget flag. Otherwise sunlight passes through solid walls/ceiling.
+    mesh.userData.bakeOccluder = mat !== m.blue && mat !== m.sky;
     mesh.receiveShadow = mat !== m.light;
     mesh.userData.campusOutline = new Set<CampusMaterial>([m.furniture, m.frame, m.wood, m.trim, m.cream, m.paper, m.sageEdge, m.rubber, m.metal]).has(mat);
     mesh.matrixAutoUpdate = false;

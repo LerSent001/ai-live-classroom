@@ -58,14 +58,35 @@ test("new male and female mentor profiles carry the 1990s Japanese SD cel identi
     assert.doesNotMatch(video, /1970s American educational television cartoon/);
     assert.match(video, teacherId === YOUTH_MENTOR_TEACHER_IDS.male ? /young adult male Mandarin educator/ : /young adult female Mandarin educator/);
     assert.doesNotMatch(video, /Off-screen narration|No on-screen presenter|Monokuma|Monomi/);
-    assert.match(video, teacherId === YOUTH_MENTOR_TEACHER_IDS.male ? /sage-green sleeves/ : /cream cardigan and slate-blue pleated skirt/);
+    assert.match(video, teacherId === YOUTH_MENTOR_TEACHER_IDS.male ? /sage-green sleeves/ : /white high-neck dress with pale blue seams/);
   }
 });
 
-test("youth camera keeps the original 4:3 television clear of the follow-up panel", () => {
+test("the cuter female cel profile repeats in every shot without changing dialogue or timing", () => {
+  const narration = "水滴会把阳光分成不同颜色。";
+  const visualAction = "The mentor points at sunlight entering a raindrop.";
+  for (const sceneNumber of [1, 3, 6]) {
+    const video = compileH3ScenePrompt({ teacherId: YOUTH_MENTOR_TEACHER_IDS.female, sceneNumber, narration, visualAction });
+    assert.match(video, /large bright rounded amber-brown eyes/);
+    assert.match(video, /soft rounded cheeks/);
+    assert.match(video, /faint peach blush/);
+    assert.match(video, /young-adult educator, never a child or baby/);
+    assert.match(video, /opaque cel-paint fills, two-tone hard-edged shadows/);
+    assert.match(video, /gentle upbeat open-palm gestures/);
+    assert.match(video, /black-purple twin ponytails/);
+    assert.match(video, /white high-neck dress with pale blue seams/);
+    assert.ok(video.includes(`Five-second 16:9 scene ${sceneNumber}`));
+    assert.ok(video.includes(`"${narration}"`));
+    assert.ok(video.includes(visualAction.slice(0, -1)));
+  }
+  const male = compileH3ScenePrompt({ teacherId: YOUTH_MENTOR_TEACHER_IDS.male, sceneNumber: 1, narration, visualAction });
+  assert.doesNotMatch(male, /peach blush|rounded cheeks|pony.*tail/);
+});
+
+test("youth camera centers the original 4:3 television above the bottom controls", () => {
   const display = YOUTH_RENDERING.screen;
   assert.ok(Math.abs(display.width / display.height - 4 / 3) < 0.001);
-  for (const [width, height] of [[1672, 941], [1440, 900], [1280, 800], [1100, 900], [390, 844], [844, 390]]) {
+  for (const [width, height] of [[1672, 941], [1440, 900], [1280, 800], [1100, 900], [700, 844], [701, 844], [390, 844], [844, 390]]) {
     const pose = youthCameraPose(width, height, true);
     assert.equal(pose.position[0], pose.lookAt[0]);
     const distance = pose.position[2] - pose.lookAt[2];
@@ -75,9 +96,13 @@ test("youth camera keeps the original 4:3 television clear of the follow-up pane
     const frameLeft = frameCenter - display.frameWidth * pixelsPerWorldUnit / 2;
     const frameRight = frameCenter + display.frameWidth * pixelsPerWorldUnit / 2;
     const frameHeight = display.frameHeight * pixelsPerWorldUnit;
+    const frameCenterY = height / 2 - (display.center[1] - pose.lookAt[1]) * pixelsPerWorldUnit;
     assert.ok(frameLeft >= 20 && frameRight <= width - 20);
+    assert.ok(Math.abs(frameCenter - width / 2) < .01, "Television remains horizontally centered");
     assert.ok(frameHeight < height);
-    if (width >= 700) assert.ok(frameRight <= width - 24 - 320 - 20 + .01, "Television must end before the desktop panel");
+    const bottomReserve = width <= 700 ? 282 : height <= 600 ? 152 : 208;
+    assert.ok(frameCenterY + frameHeight / 2 <= height - bottomReserve + .01, "Television ends above the bottom guide");
+    assert.ok(frameCenterY - frameHeight / 2 >= (width <= 700 ? 136 : 72) - .01);
     assert.ok(distance > 0);
   }
 });

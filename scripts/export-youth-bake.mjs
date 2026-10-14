@@ -12,7 +12,7 @@ const { Texture, Mesh, Group } = createRequire(import.meta.url)("three");
 
 // The only DOM resource in the model is a static clock face. The bake exports
 // geometry/irradiance only; its real canvas is still drawn by the browser.
-globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => {} }) }) };
+globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => ({ addColorStop() {} }) }) }) };
 const loader = new GLTFLoader();
 async function model(file) {
   const bytes = await fs.readFile(path.resolve("public/youth/models", file));
@@ -33,7 +33,7 @@ const built = createYouthRoom(new Texture(), await model("school-desk.glb"), awa
   monstera: await model("monstera-plant.glb"), pothos: await model("pothos.glb"), books: await model("books.glb"),
 });
 const meshes = built.room.children.map((mesh, index) => ({
-  index, stamp: youthGeometryStamp(mesh.geometry), casts: mesh.castShadow,
+  index, stamp: youthGeometryStamp(mesh.geometry), casts: mesh.userData.bakeOccluder === true,
   positions: Array.from(mesh.geometry.getAttribute("position").array),
   normals: Array.from(mesh.geometry.getAttribute("normal").array),
 }));

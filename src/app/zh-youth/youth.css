@@ -1,5 +1,6 @@
 .youth-classroom {
   --youth-ink: #304a3b;
+  --youth-control-bottom: max(24px, env(safe-area-inset-bottom));
   position: fixed; inset: 0; overflow: hidden; background: #e7e1d3;
   color: var(--youth-ink); font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -10,38 +11,101 @@
 .youth-classroom button:focus-visible, .youth-classroom input:focus-visible, .youth-classroom select:focus-visible { outline: 3px solid #488765; outline-offset: 4px; }
 .youth-scene { position: absolute; inset: 0; }
 .youth-scene canvas { touch-action: none; }
-/* Static readability scrim, above the scene and below controls. No WebGL pass,
-   blur/filter or animation; absent while lessons play. */
+.youth-classroom:not([data-scene-ready="true"]) .youth-screen { visibility: hidden; }
+/* A shallow bottom scrim supports the composer without darkening the portrait
+   or right side of the room. No WebGL pass, blur/filter or animation. */
 .youth-lobby::after {
-  content: ""; position: absolute; inset: 0; z-index: 12; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0 43%, rgba(7, 10, 15, .12) 53%, rgba(7, 10, 15, .62) 72%, rgba(5, 7, 11, .9) 100%);
+  content: ""; position: absolute; inset: auto 0 0; height: min(160px, 22%); z-index: 12; pointer-events: none;
+  background: linear-gradient(to top, rgba(5, 7, 11, .28), rgba(5, 7, 11, .1) 45%, transparent);
 }
 .youth-active::after {
   content: ""; position: absolute; inset: 0; z-index: 12; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0 calc(100% - 372px), rgba(24, 27, 27, .59) calc(100% - 330px), rgba(19, 22, 22, .88) 100%);
+  background: linear-gradient(180deg, transparent 0 calc(100% - 220px), rgba(19, 22, 22, .45) 100%);
 }
-.youth-composer { position: absolute; z-index: 20; right: 2.6%; bottom: 6.3%; width: min(510px, 41%); }
+.youth-composer { position: absolute; z-index: 20; left: 50%; transform: translateX(-50%); bottom: var(--youth-control-bottom); width: min(760px, calc(100% - 48px)); }
+.youth-portrait-anchor { position: absolute; z-index: 19; right: 2.6%; bottom: 110px; width: min(420px, 38%); pointer-events: none; }
+.youth-mentor-bubble { position: absolute; top: 7%; right: calc(50% + 180px); width: 244px; min-height: 94px; display: grid; place-items: center; padding: 20px 25px 30px; color: #344a42; font-size: 15px; line-height: 1.6; text-align: center; opacity: 0; transform: translate(6px, 10px) scale(.92); transform-origin: right bottom; visibility: hidden; transition: opacity .2s ease, transform .42s cubic-bezier(.22,1.35,.36,1), visibility 0s .2s; }
+.youth-mentor-cloud { position: absolute; inset: 0; width: 100%; height: 100%; fill: #fffefa; filter: drop-shadow(0 4px 8px #101b2520); }
+.youth-mentor-bubble span { position: relative; }
+.youth-lesson-waiting { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px; background: #f4f0e6; color: #445548; text-align: center; }
+.youth-lesson-waiting > strong { font-size: 32px; letter-spacing: .06em; }
+.youth-lesson-waiting > span { font-size: 20px; color: #788375; }
+.youth-waiting-art { position: relative; height: 57%; aspect-ratio: 1.05; flex: 0 1 auto; }
+.youth-waiting-character { position: absolute; height: 100%; aspect-ratio: 540 / 971; left: 50%; transform: translateX(-50%); overflow: hidden; mix-blend-mode: darken; animation: youth-chibi-float 2.8s ease-in-out infinite; }
+.youth-waiting-character img { display: block; width: 299.815%; max-width: none; height: 100%; }
+.youth-waiting-shadow { position: absolute; left: 29%; right: 29%; bottom: -8px; height: 11px; border-radius: 50%; background: #879b7c2c; animation: youth-chibi-shadow 2.8s ease-in-out infinite; }
+.youth-waiting-star { position: absolute; font-style: normal; color: #92ad8d; font-size: 36px; animation: youth-chibi-spark 2.8s ease-in-out infinite; }
+.youth-waiting-star.star-one { left: 5%; top: 25%; }
+.youth-waiting-star.star-two { right: 5%; top: 51%; animation-delay: -.9s; font-size: 26px; }
+.youth-waiting-dots { display: inline-flex; gap: 5px; margin-left: 9px; }
+.youth-waiting-dots i { width: 5px; height: 5px; background: currentColor; border-radius: 50%; animation: youth-chibi-spark 1.2s ease-in-out infinite; }
+.youth-waiting-dots i:nth-child(2) { animation-delay: .15s; }
+.youth-waiting-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes youth-chibi-float { 0%,100% { transform: translate(-50%,0) rotate(-1deg); } 50% { transform: translate(-50%,-9px) rotate(1deg); } }
+@keyframes youth-chibi-shadow { 0%,100% { transform: scaleX(1); opacity: .7; } 50% { transform: scaleX(.82); opacity: .4; } }
+@keyframes youth-chibi-spark { 0%,100% { transform: translateY(0) scale(.85); opacity: .45; } 50% { transform: translateY(-5px) scale(1); opacity: 1; } }
+.youth-lesson-waiting[data-paused="true"] * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .youth-lesson-waiting * { animation: none !important; } }
+.youth-portrait-anchor .youth-mentor-bubble { right: auto; left: var(--mentor-cloud-x, 0px); top: var(--mentor-cloud-y, 0px); }
+.youth-pet-accessible { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
+.youth-pet-accessible:focus-visible { width: auto; height: auto; clip-path: none; right: 12px; top: 12px; padding: 8px 12px; border-radius: 16px; background: #fffefa; color: #344a42; pointer-events: auto; z-index: 2; }
+.youth-mentor-bubble[data-visible="true"] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 .youth-mentor { position: relative; width: min(240px, 24vh); aspect-ratio: 2 / 3; margin: 0 10px 12px auto; pointer-events: none; user-select: none; }
 .youth-mentor-portrait { width: 100%; height: 100%; }
+.youth-vroid-portrait { position: relative; width: 100%; height: 46svh; margin: 0; pointer-events: none; }
+.youth-vroid-extended { position: absolute; inset: 0 0 -240px; pointer-events: none; }
+.youth-vroid-portrait + h1, .youth-vroid-portrait ~ form { position: relative; z-index: 1; }
 /* Fade only the lower artwork, never the switch or the input. Static alpha mask:
    preserve both source PNGs, without blur, animation or another WebGL pass. */
 .youth-mentor-portrait img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom;
   -webkit-mask-image: linear-gradient(to bottom, #000 0 68%, rgba(0, 0, 0, .85) 78%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0 68%, rgba(0, 0, 0, .85) 78%, transparent 100%);
 }
-.youth-composer h1 { margin: 0 0 16px 14px; color: #fffefa; font-size: clamp(28px, 3.2vw, 54px); font-weight: 800; line-height: 1.2; letter-spacing: -.035em; text-shadow: 0 2px 15px #4b412b45; white-space: nowrap; }
-.youth-composer form { display: flex; gap: 12px; align-items: center; }
-.youth-composer input { width: 100%; min-width: 0; height: 54px; padding: 0 23px; border: 1px solid #fffefa; border-radius: 32px; background: #fffefa; color: #324b3c; font-size: 17px; box-shadow: 0 3px 20px #6047260b; }
+.youth-composer h1 { margin: 0 0 16px; text-align: center; color: #fffefa; font-size: clamp(28px, 3.2vw, 54px); font-weight: 800; line-height: 1.2; letter-spacing: -.035em; text-shadow: 0 2px 3px #24202b99, 0 4px 12px #24202b66; white-space: nowrap; }
+.youth-composer form { display: flex; gap: 8px; align-items: center; padding: 5px; border: 1px solid #fffefa; border-radius: 38px; background: #fffefa; box-shadow: 0 3px 20px #30251c22; }
+.youth-composer input { flex: 1; width: 100%; min-width: 0; height: 54px; padding: 0 18px; border: 0; border-radius: 32px; background: transparent; color: #324b3c; font-size: 17px; box-shadow: none; }
 .youth-composer input::placeholder { color: #8b8d85; }
+.youth-composer input:focus-visible { outline: none; }
+/* Keep keyboard focus on the outer shell, without an inner oval. */
+.youth-composer form:focus-within { border-color: #488765; }
 .youth-composer button { flex: 0 0 auto; height: 54px; padding: 0 27px; border: 2px solid #e7f4d6; border-radius: 32px; background: #66bc63; color: #fff; font-weight: 650; font-size: 17px; box-shadow: 0 3px 15px #4c683222; transition: background .15s; }
 .youth-composer button:hover:not(:disabled) { background: #4a9e51; }
 .youth-composer button:disabled { background: #68b967; color: #fff; opacity: 1; }
 .youth-notice button { border: 0; background: #456f51; padding: 10px 18px; border-radius: 20px; color: white; }
 /* One-shot title card and reveal. Existing portrait only: no new scene,
    animated filter, fake percentage, or animation left behind in the lobby. */
-.youth-entrance { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; overflow: hidden; background: #101c1b; color: #faf8ef; opacity: 1; visibility: visible; transition: opacity .32s ease, visibility 0s; }
-.youth-entrance::before { content: ""; position: absolute; right: -10%; top: -20%; width: 47%; height: 150%; background: #1e332d; transform: skewX(-15deg); pointer-events: none; }
-.youth-entrance-entering { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .32s ease, visibility 0s .32s; }
+.youth-entrance { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at 50% 48%, #1b3035, #101a21 65%); color: #faf8ef; opacity: 1; visibility: visible; transition: opacity .32s ease, visibility 0s; }
+.youth-arrival-loader { display: grid; justify-items: center; gap: 16px; }
+.youth-arrival-loader p { margin: 0; font-size: 13px; font-weight: 400; letter-spacing: .12em; color: #d8e6e5; }
+.youth-arrival-loader small { color: #a3b6ba; font-size: 12px; }
+.youth-arrival-loader button { margin-top: 8px; border: 1px solid #729698; padding: 12px 24px; border-radius: 24px; color: #e8f5f2; background: #ffffff08; }
+.youth-arrival-symbol { position: relative; width: 72px; height: 54px; border: 1px solid #a4eee657; border-radius: 5px; box-shadow: 0 0 25px #85e6ed10, inset 0 0 15px #85e6ed08; }
+.youth-arrival-symbol::after { content: ''; position: absolute; top: calc(100% + 7px); left: 24px; width: 24px; height: 1px; background: #a4eee666; }
+.youth-arrival-symbol i { position: absolute; inset: 8px; border: 1px solid #a4eee61c; }
+.youth-arrival-symbol span { position: absolute; top: 5px; bottom: 5px; left: 0; width: 1px; background: #ccfff9; box-shadow: 0 0 10px 2px #92efe577; animation: youth-arrival-light 1.8s ease-in-out infinite; }
+.youth-entrance-failed .youth-arrival-symbol span { display: none; }
+@keyframes youth-arrival-light { 0%, 100% { transform: translateX(8px); opacity: .15; } 50% { transform: translateX(62px); opacity: 1; } }
+.youth-portrait-anchor { animation: youth-ui-float-in .58s both; }
+.youth-composer h1 { animation: youth-ui-spring-in .40s .07s both; }
+.youth-composer form { animation: youth-ui-spring-in .54s .10s both; }
+.youth-lobby .youth-wallet-chip { animation: youth-ui-spring-in .48s .18s both; }
+/* Animate children, never the composer centering transform. The overshoot is
+   positional only, so text and the WebGL portrait are not stretched. */
+@keyframes youth-ui-spring-in {
+  0% { opacity: 0; transform: translateY(26px); animation-timing-function: cubic-bezier(.16,.8,.3,1); }
+  56% { opacity: 1; transform: translateY(-5px); animation-timing-function: cubic-bezier(.4,0,.6,1); }
+  80% { opacity: 1; transform: translateY(1.2px); animation-timing-function: ease-out; }
+  100% { opacity: 1; transform: translateY(0); visibility: visible; }
+}
+@keyframes youth-ui-float-in {
+  0% { opacity: 0; transform: translateY(24px); animation-timing-function: cubic-bezier(.16,.8,.3,1); }
+  62% { opacity: 1; transform: translateY(-3px); animation-timing-function: cubic-bezier(.4,0,.6,1); }
+  84% { opacity: 1; transform: translateY(.8px); animation-timing-function: ease-out; }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.youth-composer form:focus-within { animation: none; }
+@media (prefers-reduced-motion: reduce) { .youth-arrival-symbol span, .youth-composer, .youth-portrait-anchor { animation: none; } .youth-entrance { transition: none; } }
+.youth-entrance-entering { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s ease, visibility 0s .18s; }
 .youth-entrance-layout { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 64px; width: min(820px, calc(100% - 96px)); }
 .youth-entrance-copy { position: relative; z-index: 1; animation: youth-entrance-copy-in .65s both; }
 .youth-entrance-eyebrow { display: block; margin-bottom: 25px; padding-left: 12px; border-left: 2px solid #b4cbb7; color: #c9d6ca; font-size: 12px; letter-spacing: .22em; }
@@ -82,30 +146,32 @@
 .youth-screen .stage-warning { font-family: inherit; color: #fff1d9; background: #302b24f0; }
 .youth-screen .resume-button { border-color: #b0c4a4; background: #f3f1e6; color: #36543f; font-family: inherit; }
 .youth-screen .lesson-card-fallback span, .youth-screen .lesson-card-fallback small { font-family: inherit; font-size: 20px; letter-spacing: 0; }
-.youth-view-toggle { position: absolute; top: 24px; left: 28px; z-index: 20; min-height: 44px; padding: 0 22px; border: 0; border-radius: 30px; background: #f7f6eef0; color: #375240; font-size: 15px; }
-.youth-guide { --pink: #e1c8a0; --panel-ink: #f8f5ee; --panel-muted: #c7c6bd; --panel-line: rgba(244, 238, 225, .25); z-index: 30; top: 26px; right: 28px; bottom: 24px; width: 316px; min-width: 0; color: var(--panel-ink); font-family: inherit; }
-.youth-guide .youth-guide-header { align-items: flex-start; border-bottom: 1px solid var(--panel-line); padding-bottom: 16px; }
-.youth-guide .guide-heading { gap: 8px; }
-.youth-guide .guide-heading strong { color: var(--panel-ink); font-family: inherit; font-size: 27px; font-style: normal; font-weight: 680; line-height: 1.28; letter-spacing: -.035em; text-transform: none; overflow-wrap: anywhere; }
-.youth-guide .guide-heading small { color: var(--panel-muted); font-size: 13px; line-height: 1.5; }
-.youth-guide .youth-guide-new-question { flex: none; min-height: 36px; padding: 3px 0 3px 8px; border: 0; background: transparent; color: var(--pink); font-size: 12px; white-space: nowrap; }
-.youth-guide .youth-guide-new-question:hover:not(:disabled) { color: var(--panel-ink); }
-.youth-guide .youth-guide-new-question:disabled { opacity: .5; }
-.youth-guide .guide-now { gap: 0; padding-bottom: 18px; }
+.youth-exit { position: absolute; top: max(24px, env(safe-area-inset-top)); left: max(28px, env(safe-area-inset-left)); z-index: 30; min-height: 44px; padding: 0 22px; border: 1px solid #61736a; border-radius: 24px; background: #17231f; color: #f7faf8; font-size: 14px; }
+.youth-guide { --pink: #e1c8a0; --panel-ink: #f8f5ee; --panel-muted: #c7c6bd; --panel-line: rgba(244, 238, 225, .25); z-index: 30; top: auto; right: auto; bottom: var(--youth-control-bottom); left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: minmax(190px, .9fr) minmax(190px, .85fr) minmax(320px, 1.8fr); gap: 22px; width: min(1320px, calc(100% - 48px)); height: 160px; min-width: 0; padding: 18px 22px; border: 1px solid #61736a; border-radius: 18px; background: #17231f; color: var(--panel-ink); font-family: inherit; animation: none; }
+.youth-guide .youth-guide-header { min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 8px; border: 0; padding: 0; }
+.youth-guide .guide-heading { flex: none; gap: 3px; }
+.youth-guide .guide-heading strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--panel-ink); font-family: inherit; font-size: 20px; font-style: normal; font-weight: 680; line-height: 1.28; letter-spacing: -.035em; text-transform: none; overflow-wrap: anywhere; }
+.youth-guide .guide-heading small { display: none; }
+.youth-guide .guide-now { gap: 0; padding: 0; border: 0; }
+.youth-guide .youth-view-toggle { align-self: flex-start; min-height: 44px; padding: 4px 14px; border: 1px solid #61736a; border-radius: 22px; background: #273c32; color: #f7faf8; font-size: 13px; }
+.youth-guide .guide-body { min-width: 0; padding: 0 18px; border-left: 1px solid var(--panel-line); border-right: 1px solid var(--panel-line); overflow-y: auto; }
+.youth-guide .guide-section { gap: 8px; }
 .youth-guide .guide-progress { height: 4px; margin-top: 0; background: #ffffff36; transform: none; border-radius: 4px; }
 .youth-guide .guide-progress span { border-radius: inherit; }
-.youth-guide .guide-meta { margin-top: 9px; color: var(--panel-muted); font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.youth-guide .guide-meta { margin-top: 5px; color: var(--panel-muted); font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; }
 .youth-guide .guide-title { padding: 0; background: none; color: var(--panel-muted); clip-path: none; font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .04em; line-height: 1.5; text-transform: none; }
 .youth-guide .guide-empty { color: var(--panel-muted); font-size: 13px; }
-.youth-guide .guide-queue li > span { color: var(--pink); font-family: inherit; font-size: 17px; font-style: normal; font-weight: 600; }
+.youth-guide .guide-queue li { padding: 6px 0; gap: 8px; }
+.youth-guide .guide-queue li > span { color: var(--pink); font-family: inherit; font-size: 15px; font-style: normal; font-weight: 600; }
 .youth-guide .guide-queue p { color: var(--panel-ink); }
 .youth-guide .guide-queue small { color: var(--panel-muted); font-family: inherit; font-size: 11px; letter-spacing: 0; }
-.youth-guide .guide-add { border-top: 1px solid var(--panel-line); }
-.youth-guide .guide-add input { border: 1px solid #eee9dd85; border-radius: 4px; background: #191d1d9c; color: var(--panel-ink); font-family: inherit; box-shadow: none; }
+.youth-guide .guide-add { min-width: 0; align-content: start; gap: 10px; padding: 0; border: 0; overflow-y: auto; }
+.youth-guide .guide-add input { min-height: 44px; border: 1px solid #eee9dd85; border-radius: 22px; background: #0c1812; color: var(--panel-ink); font-family: inherit; box-shadow: none; }
 .youth-guide .guide-add input:focus { background: #191d1de8; border-color: var(--pink); box-shadow: none; }
-.youth-guide .composer-action { border-radius: 4px; background: var(--pink); color: #2c2b27; }
+.youth-guide .composer-action { flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border-radius: 50%; clip-path: none; background: var(--pink); color: #2c2b27; transform: none; }
 .youth-guide .composer-action:disabled { background: #a49d91; color: #2c2b27; opacity: .7; }
-.youth-guide .guide-picks button { color: var(--panel-ink); font-size: 13px; }
+.youth-guide .guide-picks { display: flex; gap: 8px; overflow-x: auto; }
+.youth-guide .guide-picks button { flex: 1 0 130px; align-items: center; gap: 5px; min-height: 44px; padding: 6px 10px; border: 1px solid #61736a; border-radius: 12px; color: var(--panel-ink); font-size: 12px; }
 .youth-guide .guide-picks button > span { color: var(--pink); font-family: inherit; }
 .youth-guide .guide-picks button:hover:not(:disabled) { color: #fff; border-color: var(--pink); }
 .youth-notice { position: absolute; z-index: 40; top: 85px; left: 50%; transform: translateX(-50%); width: min(610px, calc(100% - 32px)); display: flex; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 16px; background: #fff9e9f5; border: 1px solid #d8c9a5; box-shadow: 0 4px 20px #4a3d2020; font-size: 14px; line-height: 1.6; }
@@ -124,23 +190,44 @@
   .youth-entrance-copy p { font-size: 11px; max-width: 250px; }
   .youth-entrance-rule-top { top: 5%; }
   .youth-entrance-rule-bottom { bottom: 5%; }
-  .youth-lobby::after { background: linear-gradient(180deg, transparent 0 42%, rgba(7, 10, 15, .12) 54%, rgba(7, 10, 15, .78) 79%, rgba(5, 7, 11, .96) 100%); }
   .youth-active::after { background: linear-gradient(180deg, transparent 0 calc(100% - 288px), rgba(24, 27, 27, .59) calc(100% - 260px), rgba(19, 22, 22, .93) 100%); }
-  .youth-composer { width: auto; left: 20px; right: 20px; bottom: max(32px, env(safe-area-inset-bottom)); }
+  .youth-composer { width: calc(100% - 32px); left: 50%; right: auto; bottom: max(32px, env(safe-area-inset-bottom)); }
+  .youth-portrait-anchor { right: 0; bottom: 136px; width: min(350px, 82%); }
+  .youth-mentor-bubble { top: -14px; right: auto; left: calc(16px - (100vw - min(350px, 82vw))); width: min(190px, 52vw); min-height: 84px; padding: 18px 21px 27px; font-size: 13px; }
   .youth-mentor { width: min(140px, 18vh); margin: 0 6px 10px auto; }
   .youth-composer h1 { margin-left: 4px; margin-bottom: 17px; font-size: clamp(28px, 7vw, 38px); }
-  .youth-composer form { gap: 8px; }
+  .youth-composer form { gap: 3px; padding: 4px; }
   .youth-composer input { padding: 0 16px; font-size: 14px; height: 50px; }
   .youth-composer button { padding: 0 17px; height: 50px; font-size: 14px; }
-  .youth-view-toggle { top: max(18px, env(safe-area-inset-top)); left: 18px; font-size: 14px; padding: 0 16px; }
-  .youth-guide { top: auto; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); left: 12px; width: auto; height: min(31svh, 265px); min-width: 0; overflow-y: auto; padding: 0 3px 4px; gap: 12px; }
-  .youth-guide .guide-header { padding-bottom: 8px; }
-  .youth-guide .guide-header strong { font-size: 20px; }
-  .youth-guide .guide-body { gap: 12px; }
-  .youth-guide .guide-now { gap: 5px; padding-bottom: 10px; }
-  .youth-guide .guide-now strong { font-size: 16px; }
+  .youth-exit { top: max(18px, env(safe-area-inset-top)); left: 18px; padding: 0 16px; }
+  .youth-guide { top: auto; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); left: 12px; transform: none; width: auto; height: 242px; grid-template-columns: 1fr; overflow-y: auto; padding: 12px; gap: 10px; }
+  .youth-guide .youth-guide-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; }
+  .youth-guide .guide-heading { grid-column: 1; }
+  .youth-guide .guide-header strong { font-size: 17px; -webkit-line-clamp: 1; }
+  .youth-guide .guide-now { grid-column: 1; }
+  .youth-guide .youth-view-toggle { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+  .youth-guide .guide-body { flex: none; max-height: 64px; padding: 0; border: 0; }
+  .youth-guide .guide-section { gap: 3px; }
+  .youth-guide .guide-title { display: none; }
+  .youth-guide .guide-empty { font-size: 12px; }
+  .youth-guide .guide-queue { display: flex; gap: 12px; overflow-x: auto; }
+  .youth-guide .guide-queue li { flex: 0 0 220px; border: 0; }
+  .youth-guide .guide-add { overflow: visible; }
+  .youth-guide .guide-picks button { flex-basis: 148px; }
   .youth-screen .lesson-caption { bottom: 160px; right: 4%; left: 4%; font-size: 44px; }
   .youth-screen .sound-toggle { min-height: 144px; padding: 12px 28px; font-size: 44px; border-radius: 36px; }
+}
+@media (min-width: 701px) and (max-width: 1000px) {
+  .youth-guide { gap: 14px; padding-left: 16px; padding-right: 16px; grid-template-columns: minmax(160px, .9fr) minmax(120px, .65fr) minmax(260px, 1.8fr); }
+  .youth-guide .guide-body { padding: 0 12px; }
+}
+@media (max-height: 600px) and (min-width: 701px) {
+  .youth-guide { height: 116px; gap: 14px; padding: 12px 16px; grid-template-columns: minmax(160px, .9fr) minmax(120px, .65fr) minmax(280px, 1.8fr); }
+  .youth-guide .guide-heading strong { font-size: 17px; -webkit-line-clamp: 1; }
+  .youth-guide .youth-guide-header { gap: 3px; }
+  .youth-guide .guide-body { padding: 0 12px; }
+  .youth-guide .guide-add { gap: 6px; }
+  .youth-guide .guide-picks button { flex-basis: 148px; }
 }
 @media (max-height: 650px) and (min-width: 701px) {
   .youth-entrance-layout { width: min(700px, calc(100% - 96px)); gap: 40px; }
@@ -159,13 +246,12 @@
 
 /* Opaque DOM surfaces: readable over bright walls, with no blur, animation,
    post-processing or extra Three.js render pass. */
-.youth-generation-note { margin: 12px 0 0 14px; color: #e7ede9; font-size: 12px; line-height: 1.6; }
-.youth-wallet { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 45; color: #f7faf8; font-size: 14px; line-height: 1.6; }
+.youth-wallet { position: fixed; top: max(24px, env(safe-area-inset-top)); right: max(28px, env(safe-area-inset-right)); z-index: 45; color: #f7faf8; font-size: 14px; line-height: 1.6; }
 .youth-wallet-chip { display: flex; align-items: center; gap: 9px; min-height: 44px; max-width: calc(100vw - 48px); padding: 9px 16px; border: 1px solid #61736a; border-radius: 25px; background: #17231f; color: #f7faf8; box-shadow: 0 4px 18px #0003; font-size: 14px; }
 .youth-wallet-chip-value { color: #cfe3d9; font-size: 12px; font-variant-numeric: tabular-nums; }
 .youth-wallet-dot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: #bfc9c3; }
 .youth-wallet-dot.is-connected { background: #9de5b0; }
-.youth-wallet-panel { position: absolute; bottom: 58px; left: 0; width: 344px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 135px); overflow-y: auto; padding: 20px; border: 1px solid #61736a; border-radius: 18px; background: #15211d; box-shadow: 0 12px 36px #0004; }
+.youth-wallet-panel { position: absolute; top: 58px; right: 0; width: 344px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 135px); overflow-y: auto; padding: 20px; border: 1px solid #61736a; border-radius: 18px; background: #15211d; box-shadow: 0 12px 36px #0004; }
 .youth-wallet-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .youth-wallet-panel h2 { margin: 0; color: #fff; font-size: 23px; font-weight: 650; letter-spacing: -.025em; }
 .youth-wallet-eyebrow { display: block; color: #bed0c6; font-size: 12px; }
@@ -187,8 +273,7 @@
 .youth-wallet-message { margin: 14px 0 0; padding: 10px 12px; border-radius: 9px; background: #3e3022; color: #ffe2b9; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .youth-composer { bottom: max(96px, calc(env(safe-area-inset-bottom) + 80px)); }
-  .youth-generation-note { margin-left: 4px; font-size: 11px; }
-  .youth-wallet { left: 18px; top: max(76px, calc(env(safe-area-inset-top) + 58px)); bottom: auto; }
+  .youth-wallet { right: max(18px, env(safe-area-inset-right)); top: max(18px, env(safe-area-inset-top)); }
   .youth-wallet-chip { max-width: calc(100vw - 36px); }
-  .youth-wallet-panel { position: fixed; top: max(130px, calc(env(safe-area-inset-top) + 112px)); left: 18px; bottom: auto; width: calc(100vw - 36px); max-width: 344px; max-height: calc(100dvh - 375px); padding: 17px; }
+  .youth-wallet-panel { width: calc(100vw - 36px); max-width: 344px; max-height: calc(100dvh - 270px); padding: 17px; }
 }

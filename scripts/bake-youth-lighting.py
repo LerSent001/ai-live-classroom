@@ -12,7 +12,9 @@ from array import array
 from mathutils import Vector
 import numpy as np
 
-source, output = sys.argv[sys.argv.index("--") + 1:]
+args = sys.argv[sys.argv.index("--") + 1:]
+source, output = args[:2]
+reuse_uv = args[2] if len(args) > 2 else None
 os.makedirs(output, exist_ok=True)
 with open(source, encoding="utf-8") as handle:
     exported = json.load(handle)
@@ -20,7 +22,7 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
-scene.cycles.samples = 48
+scene.cycles.samples = 128
 scene.cycles.max_bounces = 3
 scene.cycles.diffuse_bounces = 2
 scene.cycles.use_denoising = True
@@ -75,13 +77,24 @@ for entry in exported["meshes"]:
     obj.data.materials.append(material)
     objects.append(obj)
 
+if reuse_uv:
+    packed_source = np.fromfile(reuse_uv, dtype="<u2").astype(np.float32) / 65535
+    offset = 0
+    for obj in objects:
+        count = len(obj.data.uv_layers.active.data) * 2
+        obj.data.uv_layers.active.data.foreach_set("uv", packed_source[offset:offset + count])
+        offset += count
+    assert offset == len(packed_source), "Reused UV must match geometry"
+else:
+    for obj in objects:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = objects[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=.004, area_weight=.25, correct_aspect=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
 for obj in objects:
     obj.select_set(True)
-bpy.context.view_layer.objects.active = objects[0]
-bpy.ops.object.mode_set(mode="EDIT")
-bpy.ops.mesh.select_all(action="SELECT")
-bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=.004, area_weight=.25, correct_aspect=True)
-bpy.ops.object.mode_set(mode="OBJECT")
 
 world = bpy.data.worlds.new("Cool skylight")
 world.use_nodes = True
@@ -91,7 +104,7 @@ scene.world = world
 sun = bpy.data.lights.new("Fixed warm daylight", "SUN")
 sun.energy = 1.65
 sun.color = (1, .87, .7)
-sun.angle = .065
+sun.angle = .10
 sun_object = bpy.data.objects.new(sun.name, sun)
 scene.collection.objects.link(sun_object)
 sun_object.rotation_euler = Vector((.78, .35, -.69)).to_track_quat("-Z", "Y").to_euler()
@@ -111,8 +124,8 @@ print("Baking static classroom daylight", flush=True)
 bpy.context.view_layer.objects.active = objects[0]
 bpy.ops.object.bake(type="DIFFUSE")
 
-# Denoise the bake offline with Blender's OpenImageDenoise compositor. Baking
-# itself does not honor Cycles' render denoising checkbox.
+# Baking itself does not honor Cycles' render denoising checkbox. Preserve the
+# offline denoise step: an A/B without it amplified sampling noise on walls.
 scene.use_nodes = True
 tree = scene.node_tree
 tree.nodes.clear()
@@ -160,7 +173,7 @@ image.filepath_raw = os.path.join(output, "lighting.png")
 image.file_format = "PNG"
 image.save()
 
-manifest = {"version": 1, "width": size, "height": size, "samples": 48, "denoised": True, "meshes": []}
+manifest = {"version": 2, "width": size, "height": size, "samples": 128, "denoised": True, "shellOcclusion": True, "meshes": []}
 packed = array("H")
 for obj, entry in zip(objects, exported["meshes"]):
     uv = obj.data.uv_layers.active.data

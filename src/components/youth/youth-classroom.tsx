@@ -5,16 +5,18 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { LessonDeck, type LessonPlaybackIssue, type SignoffState } from "@/components/lesson-deck";
 import { useClassroom } from "@/hooks/use-classroom";
 import { YouthTokenPayWallet } from "./tokenpay-wallet";
-import { nextYouthMentor, YOUTH_MENTORS, YouthMentorPortrait, type YouthMentorId } from "./mentor-portrait";
+import { YOUTH_DEFAULT_MENTOR } from "./mentor-portrait";
 import { YouthEntrance } from "./entrance";
 import type { EntrancePhase } from "@/components/set/camera-motion";
 import { CLASSROOM_CONFIG, DEMO_CONFIG } from "@/lib/classroom-config";
 import type { PlaybackReport } from "@/lib/classroom-types";
 import { isLessonSubmitKey, isValidTopic } from "@/lib/lesson-language";
 import { lessonHasFailed } from "@/lib/classroom-status";
+import { MentorBubble } from './mentor-bubble';
 import { isYouthTeacher, YOUTH_MENTOR_TEACHER_IDS, YOUTH_SESSION_KEY, youthNotice } from "@/lib/youth-classroom";
 
 const YouthScene = dynamic(() => import("./youth-scene"), { ssr: false });
+const VroidPortrait = dynamic(() => import("./vroid-mentor"), { ssr: false });
 const silentSoundtrack = { enabled: false, toggle() {} };
 type PlaylistLesson = ReturnType<typeof useClassroom>["playlist"][number];
 
@@ -62,7 +64,7 @@ export function YouthClassroom() {
   const [entrancePhase, setEntrancePhase] = useState<EntrancePhase>("loading");
   const ready = entrancePhase === "ready";
   const [topic, setTopic] = useState("");
-  const [selectedMentor, setSelectedMentor] = useState<YouthMentorId>("male");
+  const selectedMentor = YOUTH_DEFAULT_MENTOR;
   const [nextTopic, setNextTopic] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [queueing, setQueueing] = useState<string | null>(null);
@@ -124,7 +126,6 @@ export function YouthClassroom() {
   const playedScenes = Math.max(snapshot?.scenes.filter((scene) => scene.kind === "played").length ?? 0, sceneNumber ? sceneNumber - 1 : 0);
   const playbackStatus = failed ? "课程未完成" : complete ? "已结束" : snapshot?.playback.kind === "playing" ? "播放中"
     : snapshot?.playback.kind === "buffering" ? "缓冲中" : phase === "preparing" ? "准备中" : "待播放";
-  const nextMentor = nextYouthMentor(selectedMentor);
 
   return <main lang="zh-CN" className={`youth-classroom ${active ? "youth-active" : "youth-lobby"}`}
     data-theme="zh-youth" data-scene-ready={ready} data-entrance-phase={entrancePhase} data-desk-count="6" data-lesson-mode="question">
@@ -136,24 +137,13 @@ export function YouthClassroom() {
         onExit={() => void classroom.actions.clear(true)} />
     </YouthScene>
 
-    <YouthEntrance phase={entrancePhase} mentor={selectedMentor} />
+    <YouthEntrance phase={entrancePhase} mentor={selectedMentor} showPortrait={false} />
 
     <YouthTokenPayWallet ready={ready} openRequest={walletOpenRequest} active={active}
       onReady={onWalletReady} onChanged={classroom.actions.resetConnection} />
 
+    {ready && !active && <div className="youth-portrait-anchor"><VroidPortrait /><MentorBubble /></div>}
     {ready && !active && <section className="youth-composer" aria-label="开始新课程">
-      <div className="youth-mentor" data-youth-mentor={selectedMentor}>
-        <button type="button" className="youth-mentor-switch" disabled={submitting}
-          aria-label={`切换为${YOUTH_MENTORS[nextMentor].label}`}
-          title={`当前：${YOUTH_MENTORS[selectedMentor].label} · 切换为${YOUTH_MENTORS[nextMentor].label}`}
-          onClick={() => setSelectedMentor(nextYouthMentor)}>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-            <path d="m15 4 4 4-4 4M5 8h14M9 12l-4 4 4 4m10-4H5" />
-          </svg>
-        </button>
-        <YouthMentorPortrait mentor={selectedMentor} />
-      </div>
-      <h1>从一个好问题开始</h1>
       <form onSubmit={(event) => void start(event)}>
         <label className="sr-only" htmlFor="youth-topic">想学习的问题</label>
         <input id="youth-topic" placeholder="例如：彩虹是怎么形成的？" value={topic} maxLength={500} autoComplete="off"
@@ -161,30 +151,29 @@ export function YouthClassroom() {
           onKeyDown={(event) => { if (event.key === "Enter" && !isLessonSubmitKey(event)) event.preventDefault(); }} />
         <button type="submit" disabled={!isValidTopic(topic) || submitting}>{submitting ? "正在准备" : "开始探索"}</button>
       </form>
-      <p className="youth-generation-note">生成按 TokenDance 用量计费 · 请由家长或老师授权</p>
     </section>}
 
     {ready && active && <>
-      <button type="button" className="youth-view-toggle" disabled={!focusReady} onClick={() => setRoomView((value) => !value)}>
-        {roomView ? "回到屏幕" : "看看教室"}
-      </button>
+      {complete ? <button type="button" className="youth-exit" disabled={!classroom.actions.canClear}
+        onClick={async () => { await classroom.actions.clear(); setRoomView(false); setCameraAtScreen(false); setMediaReady(false); setLocalError(null); }}>提新问题</button>
+        : <button type="button" className="youth-exit"
+          title="退出会停止新片段提交；已受理任务仍可能计费，并继续保存结果。"
+          onClick={() => void classroom.actions.clear(true)}>退出课程</button>}
       <aside className="chat-overlay guide youth-guide" aria-label="课程导览">
         <header className="guide-header youth-guide-header">
           <div className="guide-heading">
             <strong>{!hasLesson && phase === "preparing" ? "正在准备课堂…" : snapshot?.lesson?.title ?? current?.topic ?? snapshot?.topic}</strong>
             {hasLesson && snapshot?.lesson?.title !== (current?.topic ?? snapshot?.topic) && <small>{current?.topic ?? snapshot?.topic}</small>}
           </div>
-          {complete && <button type="button" className="youth-guide-new-question" disabled={!classroom.actions.canClear}
-            onClick={async () => { await classroom.actions.clear(); setRoomView(false); setCameraAtScreen(false); setMediaReady(false); setLocalError(null); }}>提新问题</button>}
-          {!complete && <button type="button" className="youth-guide-new-question"
-            title="退出会停止新片段提交；已受理任务仍可能计费，并继续保存结果。"
-            onClick={() => void classroom.actions.clear(true)}>退出课程</button>}
-        </header>
-        <div className="guide-body">
           <section className="guide-now" aria-label="当前课程">
             <YouthGuideProgress sceneKey={sceneKey} playedScenes={playedScenes} targetScenes={targetScenes}
               clipSeconds={clipSeconds} complete={complete && !failed} status={playbackStatus} durationKnown={hasLesson} />
           </section>
+          <button type="button" className="youth-view-toggle" disabled={!focusReady} onClick={() => setRoomView((value) => !value)}>
+            {roomView ? "回到屏幕" : "看看教室"}
+          </button>
+        </header>
+        <div className="guide-body">
           <section className="guide-section">
             <h2 className="guide-title">接下来</h2>
             {upcoming.length === 0 ? <p className="guide-empty">{failed ? "当前课程尚未完成，请先处理课程提示。" : !hasLesson ? "课程准备好后可以选择续讲。" : classroom.actions.canQueue ? "选一个问题，接着学习。" : "续讲已全部选好。"}</p>

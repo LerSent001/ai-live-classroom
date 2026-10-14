@@ -4,10 +4,10 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { nextYouthMentor, YOUTH_MENTORS, YouthMentorPortrait, type YouthMentorId } from "./mentor-portrait";
+import { nextYouthMentor, YOUTH_DEFAULT_MENTOR, YOUTH_MENTORS, YouthMentorPortrait, type YouthMentorId } from "./mentor-portrait";
 
 test("youth mentor is a passive optimized DOM portrait with the original alpha source", () => {
-  const html = renderToStaticMarkup(createElement(YouthMentorPortrait));
+  const html = renderToStaticMarkup(createElement(YouthMentorPortrait, { mentor: "male" }));
   assert.match(html, /data-youth-portrait="mentor-v1"/);
   assert.match(html, /aria-hidden="true"/);
   assert.match(html, /alt=""/);
@@ -22,6 +22,16 @@ test("youth mentor is a passive optimized DOM portrait with the original alpha s
   assert.equal(png[25], 6, "Original image retains RGBA rather than flattening its background");
   assert.ok(png.length < 2_000_000);
   assert.equal(createHash("sha256").update(png).digest("hex"), "cc62a056358750e59dccd7688229387b2963571860c33292d36cf1d3328d7723", "The existing male artwork is preserved byte-for-byte");
+});
+
+test("the shared classroom default and unselected portrait use the existing female identity", () => {
+  assert.equal(YOUTH_DEFAULT_MENTOR, "female");
+  const html = renderToStaticMarkup(createElement(YouthMentorPortrait));
+  assert.match(html, /data-youth-portrait="mentor-female-v2"/);
+  assert.match(html, /mentor-female-halfbody-v2\.png/);
+  assert.doesNotMatch(html, /mentor-halfbody-v1\.png/);
+  const source = readFileSync(new URL("./youth-classroom.tsx", import.meta.url), "utf8");
+  assert.match(source, /const selectedMentor = YOUTH_DEFAULT_MENTOR/);
 });
 
 test("both UI identities use a single optimized image and the same alpha-mask surface", () => {

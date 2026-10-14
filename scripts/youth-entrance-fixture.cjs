@@ -21,7 +21,7 @@ module.exports = async function verifyEntrance(page, base, out, name = 'desktop'
   });
   try {
     await page.goto(base + '/zh-youth', { waitUntil: 'domcontentloaded' });
-    await page.locator('.youth-entrance-loading img').evaluate(image => image.decode());
+    await page.locator('.youth-arrival-symbol').waitFor();
     await page.waitForTimeout(reduced ? 50 : 800);
     assert.equal(await page.locator('main').getAttribute('data-scene-ready'), 'false');
     assert.equal(await page.locator('.youth-composer').count(), 0);
@@ -39,9 +39,11 @@ module.exports = async function verifyEntrance(page, base, out, name = 'desktop'
       assert.equal(reveal.opacity, '0');
       assert.equal(reveal.visibility, 'hidden');
       assert.equal(reveal.pointerEvents, 'none');
-      assert.ok(reveal.progress > 0 && reveal.progress < 1, 'Camera movement must be visible after the cover disappears, not finish behind it');
+      assert.ok(reveal.progress > 0 && reveal.progress < 1, 'Object arrival must be visible after the cover disappears');
       assert.equal(await page.locator('.youth-composer').count(), 0, 'Input waits until landing completes');
       await page.screenshot({ path: path.join(out, `entrance-${name}-landing.png`) });
+      await page.waitForFunction(() => Number(document.querySelector('.youth-scene canvas')?.dataset.entranceProgress) >= .66);
+      await page.screenshot({ path: path.join(out, `entrance-${name}-screen-signal.png`) });
     }
     await page.waitForSelector('[data-scene-ready="true"]', { timeout: 30000 });
     assert.equal(await page.locator('.youth-entrance').count(), 0, 'No loading animation can remain in the ready DOM');

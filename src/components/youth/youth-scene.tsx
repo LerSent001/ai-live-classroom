@@ -3,7 +3,7 @@
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Html, useGLTF } from "@react-three/drei";
-import { FileLoader, NoToneMapping, SRGBColorSpace, TextureLoader, Vector3, WebGLRenderer, type PerspectiveCamera, Mesh } from "three";
+import { FileLoader, LinearFilter, NoToneMapping, SRGBColorSpace, TextureLoader, Vector3, WebGLRenderer, type PerspectiveCamera, type Group, Mesh } from "three";
 import { ClassroomSceneBoundary } from "@/components/classroom-entrance";
 import { YOUTH_RENDERING } from "@/lib/youth-classroom";
 import { createYouthRoom } from "./room-model";
@@ -11,13 +11,17 @@ import { smoothCameraProgress, youthCameraPose, youthEntrancePose } from "./came
 import type { EntrancePhase } from "@/components/set/camera-motion";
 import { installYouthBake } from "./baked-lighting";
 import lighting from "../../../public/youth/lighting.json";
+import { installRoomArrival } from "./room-arrival";
+import { ArrivalLight } from "./arrival-light";
+import { bindRoomHover, installRoomHover } from "./room-hover";
+import { bindWallClock } from "./wall-clock";
 
 const modelURLs = ["/youth/models/school-desk.glb", "/youth/models/school-chair.glb", "/youth/models/monstera-plant.glb", "/youth/models/pothos.glb", "/youth/models/books.glb"];
 
 // Fetch independent static assets together, before the first hook can suspend.
 // Clones are the only copies uploaded to the GPU by the actual room render.
 if (typeof window !== "undefined") {
-  useLoader.preload(TextureLoader, ["/youth/surfaces.webp", "/youth/lighting.webp"]);
+  useLoader.preload(TextureLoader, ["/youth/surfaces.webp", "/youth/lighting.webp", "/youth/campus-perspective.webp"]);
   useLoader.preload(FileLoader, "/youth/lighting-uv.bin", loader => loader.setResponseType("arraybuffer"));
   useGLTF.preload(modelURLs);
 }
@@ -31,20 +35,56 @@ type Props = Readonly<{
 }>;
 
 const Room = memo(function Room() {
+  const roomRef = useRef<Group>(null);
+  const { gl, camera, invalidate } = useThree();
+  const hover = useRef<ReturnType<typeof bindRoomHover> | null>(null);
   // Upload only our color-space-configured clones, not an extra GPU copy of
   // each loader-cache texture (useTexture eagerly initializes both originals).
-  const [map, lightMap] = useLoader(TextureLoader, ["/youth/surfaces.webp", "/youth/lighting.webp"]);
+  const [map, lightMap, campus] = useLoader(TextureLoader, ["/youth/surfaces.webp", "/youth/lighting.webp", "/youth/campus-perspective.webp"]);
   const packedUV = useLoader(FileLoader, "/youth/lighting-uv.bin", loader => loader.setResponseType("arraybuffer")) as ArrayBuffer;
   const [desk, chair, monstera, pothos, books] = useGLTF(modelURLs);
   const built = useMemo(() => {
     const ownedMap = map.clone(); ownedMap.colorSpace = SRGBColorSpace; ownedMap.anisotropy = 4; ownedMap.needsUpdate = true;
     const ownedLightMap = lightMap.clone(); ownedLightMap.colorSpace = SRGBColorSpace; ownedLightMap.channel = 1; ownedLightMap.needsUpdate = true;
+    // Packed islands only have base-level padding. Automatic mipmaps blend
+    // unrelated wall/furniture islands at distance, producing false dark seams.
+    ownedLightMap.generateMipmaps = false; ownedLightMap.minFilter = LinearFilter;
     const model = createYouthRoom(ownedMap, desk.scene, chair.scene, ownedLightMap, { monstera: monstera.scene, pothos: pothos.scene, books: books.scene });
     const disposeInk = installYouthBake(model.room, packedUV, lighting);
-    return { room: model.room, dispose() { disposeInk(); model.dispose(); ownedMap.dispose(); ownedLightMap.dispose(); } };
-  }, [map, lightMap, packedUV, desk, chair, monstera, pothos, books]);
+    const arrival = installRoomArrival(model.room);
+    arrival.value = 0;
+    model.room.userData.arrivalClock = arrival;
+    // Reuse the two existing background triangles. Perspective is in the image.
+    const ownedCampus = campus.clone(); ownedCampus.colorSpace = SRGBColorSpace; ownedCampus.needsUpdate = true;
+    // The backplate is much taller than the window opening: frame the full
+    // distant field/tree/building depth instead of magnifying a patch of track.
+    ownedCampus.repeat.set(.85, 3.8); ownedCampus.offset.set(.075, -1.0);
+    const backdrop = model.room.getObjectByName('Window sky background') as Mesh;
+    const backdropMaterial = backdrop.material as import('three').MeshBasicMaterial;
+    backdropMaterial.map = ownedCampus; backdropMaterial.vertexColors = false;
+    backdropMaterial.needsUpdate = true;
+    backdrop.userData.perspectiveBackdrop = true;
+    const hoverUniforms = installRoomHover(model.room);
+    return { room: model.room, arrival, hoverUniforms, dispose() { hoverUniforms.dispose(); ownedCampus.dispose(); disposeInk(); model.dispose(); ownedMap.dispose(); ownedLightMap.dispose(); } };
+  }, [map, lightMap, campus, packedUV, desk, chair, monstera, pothos, books]);
   useEffect(() => () => built.dispose(), [built]);
-  return <primitive object={built.room} dispose={null} />;
+  useEffect(() => bindWallClock(built.room, gl.domElement, invalidate), [built, gl, invalidate]);
+  useEffect(() => {
+    const controller = bindRoomHover(built.room, gl.domElement, camera, invalidate, built.hoverUniforms);
+    hover.current = controller;
+    return () => { controller.dispose(); hover.current = null; };
+  }, [built, gl, camera, invalidate]);
+  useFrame(({ gl }, delta) => {
+    hover.current?.update(delta);
+    const room = roomRef.current;
+    if (!room) return;
+    const progress = Number(gl.domElement.dataset.entranceProgress ?? 0);
+    room.userData.arrivalClock.value = progress >= 1 ? 10 : progress * 1.65;
+    const ink = room.getObjectByName('Static anime architectural ink');
+    if (ink) ink.visible = progress >= .88;
+    gl.domElement.dataset.arrivalTime = String(room.userData.arrivalClock.value);
+  }, -50);
+  return <primitive ref={roomRef} object={built.room} dispose={null} />;
 });
 
 const Lighting = memo(function Lighting() {
@@ -162,6 +202,7 @@ function Camera({ screenView, onEntrancePhase, onSettled }: Pick<Props, "screenV
     perspective.lookAt(rotatedLook); perspective.updateProjectionMatrix(); perspective.updateMatrixWorld();
     // Read-only evidence for no-spend QA, no polling/invalidation of its own.
     gl.domElement.dataset.renderFrames = String(++motion.frames);
+    gl.domElement.dataset.cameraPosition = perspective.position.toArray().join(',');
     gl.domElement.dataset.drawCalls = String(gl.info.render.calls);
     gl.domElement.dataset.triangles = String(gl.info.render.triangles);
     gl.domElement.dataset.shadows = "offline-baked";
@@ -181,7 +222,7 @@ export default function YouthScene(props: Props) {
         onCreated={onCreated}
         gl={{ alpha: false, antialias: true, preserveDrawingBuffer: true, powerPreference: "low-power" }}>
         <Suspense fallback={null}>
-          <Lighting /><Room /><FrameDiagnostics />
+          <Lighting /><Room /><ArrivalLight /><FrameDiagnostics />
           <Camera screenView={props.screenView} onEntrancePhase={props.onEntrancePhase} onSettled={props.onSettled} />
           <Html transform center position={[screen.center[0], screen.center[1], screen.center[2] - 0.068]}
             distanceFactor={1} zIndexRange={[8, 2]}>
@@ -205,9 +246,12 @@ function FrameDiagnostics() {
     scene.traverse((object) => { if (object instanceof Mesh) { meshes++; assetTriangles += (object.geometry.index?.count ?? object.geometry.getAttribute("position").count) / 3; } });
     gl.domElement.dataset.meshes = String(meshes);
     gl.domElement.dataset.assetTriangles = String(assetTriangles);
-    gl.domElement.dataset.materialStyle = "sakuragaoka-baked-anime";
+    gl.domElement.dataset.materialStyle = "paper-print-baked";
     gl.domElement.dataset.shadowMaps = String(gl.shadowMap.enabled);
     gl.domElement.dataset.gpuTextures = String(gl.info.memory.textures);
+    const exterior = scene.getObjectByName('Window sky background');
+    gl.domElement.dataset.exterior = exterior?.userData.perspectiveBackdrop ? 'perspective-illustration' : 'none';
+    gl.domElement.dataset.exteriorTriangles = exterior ? '2' : '0';
   }, 1);
   return null;
 }

@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import sharp from "sharp";
+import path from "node:path";
 
-const source = "output/youth-bake/", destination = "public/youth/";
+const source = path.resolve(process.argv[2] || "output/youth-bake") + path.sep;
+const destination = path.resolve(process.argv[3] || "public/youth") + path.sep;
+await fs.mkdir(destination, { recursive: true });
 const image = await sharp(source + "lighting.png").removeAlpha().webp({ quality: 94, effort: 6 }).toBuffer();
 const uv = await fs.readFile(source + "lighting-uv.bin");
 const manifest = JSON.parse(await fs.readFile(source + "lighting.json", "utf8"));

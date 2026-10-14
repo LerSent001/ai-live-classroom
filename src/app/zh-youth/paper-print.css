@@ -1,0 +1,118 @@
+/* Original classroom adaptation of a print/comic visual language.
+   Only scoped DOM surfaces: the scene has its own single-pass material.
+   No full-screen filter, blend layer or animated noise over the lesson video. */
+.youth-classroom {
+  --youth-ink: #332d55;
+  --print-paper: #fff6e4;
+  --print-muted: #6b6383;
+  --print-blue: #6264c9;
+  --print-cyan: #90ddd9;
+  --print-pink: #efaaca;
+  --print-yellow: #ffdc7e;
+  --print-line: #3e365e;
+  background: #acb8e6;
+}
+.youth-classroom button:focus-visible,
+.youth-classroom input:focus-visible { outline-color: #6264c9; }
+.youth-composer h1 {
+  color: var(--print-paper);
+  -webkit-text-stroke: 1px var(--print-line);
+  paint-order: stroke fill;
+  text-shadow: -2px 0 var(--print-pink), 2px 2px var(--print-cyan), 0 3px var(--print-line);
+}
+.youth-composer form {
+  border: 2px solid var(--print-line);
+  background: var(--print-paper);
+  box-shadow: -4px 0 var(--print-pink), 4px 5px var(--print-cyan), 4px 7px 0 1px var(--print-line);
+}
+.youth-composer input { color: var(--youth-ink); }
+.youth-composer input:focus-visible { outline: none; }
+/* One focus indicator on the existing outer shell, not a second capsule
+   inside it. Keyboard users retain a visible focus state. */
+.youth-composer form:focus-within { border-color: var(--print-blue); }
+.youth-composer input::placeholder { color: var(--print-muted); }
+.youth-composer button {
+  background: var(--print-yellow); color: var(--youth-ink); border-color: var(--print-line);
+  box-shadow: 0 2px 0 var(--print-line);
+  transition: transform .18s cubic-bezier(.2,1.5,.4,1), background .15s, box-shadow .15s;
+}
+.youth-composer button:hover:not(:disabled) { background: #ffe9a4; transform: translateY(-2px); box-shadow: 0 4px 0 var(--print-line); }
+.youth-composer button:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.youth-composer button:disabled { background: #e5dfd5; color: #726a7d; border-color: #8d8599; box-shadow: none; }
+.youth-mentor-bubble { color: var(--youth-ink); font-weight: 550; }
+.youth-mentor-cloud { fill: var(--print-paper); stroke: var(--print-line); stroke-width: 1.6; filter: drop-shadow(-3px 0 0 #efaaca) drop-shadow(3px 3px 0 #90ddd9); overflow: visible; }
+.youth-entrance {
+  background: radial-gradient(ellipse at 48% 25%, #8dcce7, transparent 64%), linear-gradient(160deg, #8eaae4, #737fcd 70%, #aaa2d9);
+  color: var(--print-paper);
+}
+.youth-entrance::before {
+  content: ''; position: absolute; inset: 50% 0 0; pointer-events: none; opacity: .16;
+  background: radial-gradient(circle, #373054 1px, transparent 1.3px) 0 0 / 6px 6px;
+  mask-image: linear-gradient(transparent, #000);
+}
+.youth-arrival-loader { position: relative; gap: 23px; }
+.youth-arrival-loader p { font-size: 16px; font-weight: 650; color: var(--print-paper); text-shadow: 0 2px #514782; }
+.youth-arrival-loader small { color: #fff6e4; }
+.youth-arrival-loader button { background: var(--print-paper); color: var(--youth-ink); border: 2px solid var(--print-line); box-shadow: 3px 3px var(--print-cyan); }
+.youth-arrival-symbol {
+  width: 124px; height: 124px; border: 2px solid var(--print-line); border-radius: 50%;
+  background: var(--print-paper); box-shadow: -5px 0 var(--print-pink), 5px 5px var(--print-cyan), 5px 7px 0 1px var(--print-line);
+}
+.youth-arrival-symbol i { inset: 36px 28px 40px; border: 3px solid var(--print-line); border-radius: 8px; background: #b6b9ed; transform: rotate(-7deg); }
+.youth-arrival-symbol::after { top: 86px; left: 47px; width: 26px; height: 3px; background: var(--print-line); transform: rotate(-7deg); }
+.youth-arrival-symbol span { top: 48px; bottom: auto; left: 51px; width: 20px; height: 20px; border-radius: 50%; background: var(--print-yellow); box-shadow: none; animation: youth-print-signal 1.6s ease-in-out infinite; }
+@keyframes youth-print-signal { 0%,100% { transform: scale(.72); } 50% { transform: scale(1); } }
+.youth-lesson-waiting {
+  color: var(--youth-ink); background-color: var(--print-paper);
+  background-image: radial-gradient(circle, #7664a512 .8px, transparent 1px);
+  background-size: 7px 7px;
+}
+.youth-lesson-waiting > span { color: var(--print-muted); }
+.youth-waiting-star { color: #9a7ac7; }
+.youth-waiting-shadow { background: #7664a522; }
+.youth-exit, .youth-wallet-chip {
+  border: 2px solid var(--print-line); background: var(--print-paper); color: var(--youth-ink);
+  box-shadow: 3px 3px var(--print-cyan), 3px 4px 0 1px var(--print-line);
+}
+.youth-wallet-chip-value { color: var(--print-muted); }
+.youth-wallet-dot { background: #b3a5c8; }
+.youth-wallet-dot.is-connected { background: #398c89; }
+.youth-wallet-panel {
+  border: 2px solid var(--print-line); background: var(--print-paper); color: var(--youth-ink);
+  box-shadow: -4px 0 var(--print-pink), 5px 5px var(--print-cyan), 5px 7px 0 1px var(--print-line);
+}
+.youth-wallet-panel h2, .youth-wallet-balance strong, .youth-wallet-key label { color: var(--youth-ink); }
+.youth-wallet-eyebrow, .youth-wallet-note, .youth-wallet-balance span { color: var(--print-muted); }
+.youth-wallet-balance { border-color: #b9abce; background: #ece6f5; }
+.youth-wallet-panel button { border-color: #8f80ac; background: #eee7f6; color: var(--youth-ink); }
+.youth-wallet-panel .youth-wallet-primary { background: var(--print-yellow); border-color: var(--print-line); color: var(--youth-ink); }
+.youth-wallet-panel .youth-wallet-close { background: var(--print-paper); border-color: #b9abce; }
+.youth-wallet-panel button:hover:not(:disabled), .youth-wallet-chip:hover { border-color: var(--print-blue); background: #f2ecfc; }
+.youth-wallet-panel button:disabled { color: #82758d; border-color: #c6bbce; background: #e5dfdf; }
+.youth-wallet-key input { background: #fffdf6; border-color: #b9abce; color: var(--youth-ink); }
+.youth-wallet-key input::placeholder { color: var(--print-muted); }
+.youth-wallet-message { background: #ffe6c2; color: #725029; }
+.youth-wallet button:focus-visible, .youth-wallet input:focus-visible { outline-color: var(--print-blue); }
+.youth-guide {
+  --pink: #6264c9; --panel-ink: #332d55; --panel-muted: #6b6383; --panel-line: #c9bdd5;
+  border: 2px solid var(--print-line); background: var(--print-paper);
+  box-shadow: -3px 0 var(--print-pink), 4px 4px var(--print-cyan), 4px 5px 0 1px var(--print-line);
+}
+.youth-guide .youth-view-toggle { border-color: #a89abf; background: #eee7f6; color: var(--youth-ink); }
+.youth-guide .guide-progress { height: 5px; background: #dbd0e5; }
+.youth-guide .guide-add input, .youth-guide .guide-add input:focus { background: #fffcf4; border-color: #a89abf; color: var(--youth-ink); }
+.youth-guide .guide-add input::placeholder { color: var(--print-muted); }
+.youth-guide .composer-action { background: var(--print-yellow); color: var(--youth-ink); border: 1px solid var(--print-line); }
+.youth-guide .composer-action:disabled { background: #e1d9e8; color: #746a80; }
+.youth-guide .guide-picks button { border-color: #b9abce; background: #eee7f6; }
+.youth-guide .guide-picks button:hover:not(:disabled) { background: #e1dcf6; color: var(--youth-ink); border-color: var(--print-blue); }
+.youth-notice { border: 2px solid var(--print-line); background: var(--print-paper); color: var(--youth-ink); box-shadow: 4px 4px var(--print-pink); }
+.youth-notice button { background: var(--print-blue); color: #fffaf0; }
+.youth-screen-message { background: #eee7f6; color: var(--youth-ink); }
+.youth-screen .resume-button { background: var(--print-yellow); color: var(--youth-ink); border-color: var(--print-line); }
+@media (max-width: 700px) {
+  .youth-composer form { box-shadow: -2px 0 var(--print-pink), 3px 3px var(--print-cyan), 3px 5px 0 1px var(--print-line); }
+  .youth-composer h1 { -webkit-text-stroke-width: .7px; }
+  .youth-active::after { background: linear-gradient(to top, #332d5533, transparent 285px); }
+}
+@media (prefers-reduced-motion: reduce) { .youth-arrival-symbol span { animation: none; } }

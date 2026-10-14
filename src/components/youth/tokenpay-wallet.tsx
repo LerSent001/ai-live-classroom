@@ -120,23 +120,22 @@ export function YouthTokenPayWallet({ ready, openRequest, active, onReady, onCha
   }
 
   if (!ready) return null;
-  const balance = status?.balanceYuan;
   return <div className="youth-wallet" data-wallet-connected={Boolean(status?.connected)}>
     <button ref={chip} type="button" className="youth-wallet-chip" aria-label="打开 TokenDance 钱包"
       aria-expanded={isExpanded} aria-controls="youth-wallet-panel" onClick={() => isExpanded ? close() : setExpanded(true)}>
       <span className={`youth-wallet-dot ${status?.connected ? "is-connected" : ""}`} aria-hidden="true" />
-      <span>TokenDance</span><span className="youth-wallet-chip-value">{status?.connected ? typeof balance === "number" ? `¥${balance.toFixed(2)}` : "已连接" : status ? "连接钱包" : busy ? "连接中…" : "重试"}</span>
+      <span>TokenDance</span><span className="youth-wallet-chip-value">{status?.connected ? "已连接" : status ? "连接钱包" : busy ? "连接中…" : "重试"}</span>
     </button>
     {isExpanded && <section id="youth-wallet-panel" className="youth-wallet-panel" aria-label="TokenDance 钱包">
       <header><div><span className="youth-wallet-eyebrow">课程生成钱包</span><h2>TokenDance</h2></div>
         <button ref={closeButton} type="button" className="youth-wallet-close" aria-label="收起钱包" onClick={close}>×</button></header>
-      <div className="youth-wallet-balance"><span>{status?.connected ? "账户余额" : "尚未连接"}</span>
-        <strong>{status?.connected ? typeof balance === "number" ? `¥ ${balance.toFixed(4)}` : "暂时无法读取" : "使用自己的钱包"}</strong>
+      <div className="youth-wallet-balance"><span>连接状态</span>
+        <strong>{status?.connected ? "已连接" : "尚未连接"}</strong>
       </div>
       <p className="youth-wallet-note">连接和浏览教室不产生生成费用。开始课程后，规划与视频按 TokenDance 实际用量计费。</p>
       <p className="youth-wallet-note">未成年人请由家长或老师授权，并在授权页设置额度。</p>
       <div className="youth-wallet-actions">
-        {status?.connected ? <><button type="button" disabled={busy} onClick={() => { setMessage(""); setBusy(true); void refresh(); }}>刷新余额</button>
+        {status?.connected ? <><button type="button" disabled={busy} onClick={() => { setMessage(""); setBusy(true); void refresh(); }}>刷新状态</button>
           <button type="button" disabled={busy} onClick={() => void action("disconnect")}>断开连接</button></>
           : <button type="button" className="youth-wallet-primary" disabled={busy || !status} onClick={() => void action("connect")}>{busy ? "正在连接…" : "授权连接"}</button>}
         {!status && <button type="button" disabled={busy} onClick={() => { setMessage(""); setBusy(true); void refresh(); }}>重新读取状态</button>}

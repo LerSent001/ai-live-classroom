@@ -21,7 +21,7 @@ export function youthNotice(message: string | null | undefined): string | null {
     .replace(/^Video generation stopped:\s*/i, "视频暂未完成：");
 }
 export const YOUTH_RENDERING = {
-  maxDpr: 1.25, cameraSeconds: 1.45, entranceSeconds: 1.65, entranceRevealSeconds: .32,
+  maxDpr: 1.25, cameraSeconds: 1.45, entranceSeconds: 1.95, entranceRevealSeconds: .18,
   deskColumns: [-2.25, 2.25], deskRows: [-0.6, 1.5, 3.6],
   screen: { center: [-2.45, 3.9, -2.4] as const, width: 2.07, height: 1.5525, frameWidth: 2.22, frameHeight: 1.7 },
 } as const;

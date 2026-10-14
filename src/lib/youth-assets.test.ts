@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { ShaderLib, Texture, type WebGLRenderer } from "three";
 import { campusMaterials } from "@/components/youth/campus-material";
 import { classroomWindowGlass } from "@/components/youth/window-glass";
 
@@ -55,7 +56,7 @@ test("surface atlas adds wall/wood detail without exceeding the former chalkboar
   }
 });
 
-test("environment materials are continuous, opaque and have no toon ramp / refraction", () => {
+test("environment materials are opaque and have no extra toon ramp / refraction textures", () => {
   const palette = campusMaterials(), wall = palette.material("#ffffff"), glass = palette.glass("#aabbcc");
   assert.equal(wall.type, "MeshLambertMaterial");
   assert.equal(glass.type, "MeshPhongMaterial");
@@ -65,6 +66,17 @@ test("environment materials are continuous, opaque and have no toon ramp / refra
   assert.equal(glass.opacity, 1);
   assert.ok(!("gradientMap" in wall));
   wall.dispose(); glass.dispose();
+});
+
+test("baked cel shading patches the actual basic shader without another render pass", () => {
+  const lightMap = new Texture();
+  const material = campusMaterials(lightMap).material("#ffffff");
+  const shader = { ...ShaderLib.basic, uniforms: { ...ShaderLib.basic.uniforms } };
+  material.onBeforeCompile(shader as Parameters<typeof material.onBeforeCompile>[0], {} as WebGLRenderer);
+  assert.match(shader.fragmentShader, /float celDaylight/);
+  assert.match(shader.fragmentShader, /lightMapTexel\.rgb \*= mix/);
+  assert.equal(material.type, "MeshBasicMaterial");
+  material.dispose(); lightMap.dispose();
 });
 
 test("authored CC0 plants and books retain vertex colours without runtime texture sets", () => {
@@ -96,7 +108,7 @@ test("window glass uses one transparent pass and analytic reflection, not transm
   assert.equal(glass.transparent, true);
   assert.equal(glass.depthWrite, false);
   assert.equal(glass.forceSinglePass, true);
-  assert.equal(glass.uniforms.uOpacity.value, .14);
+  assert.equal(glass.uniforms.uOpacity.value, .20);
   assert.ok(!glass.fragmentShader.includes("sampler2D"));
   assert.ok(!glass.fragmentShader.includes("transmission"));
   assert.ok(glass.fragmentShader.includes("colorspace_fragment"));

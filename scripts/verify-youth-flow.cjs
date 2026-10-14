@@ -15,6 +15,9 @@ const openingSeconds = Number(process.env.YOUTH_OPENING_SECONDS || 30);
 assert.ok([15, 20, 25, 30].includes(openingSeconds));
 const cached = process.env.YOUTH_CACHED_MEDIA === '1';
 const streaming = process.env.YOUTH_STREAMING_QA === '1';
+const waitingQA = process.env.YOUTH_WAITING_QA === '1';
+const screenshotsQA = process.env.YOUTH_SCREENSHOTS === '1';
+const waitingGate = Promise.withResolvers();
 const cache = cached ? new SavedClassrooms(path.resolve('recordings')).load('classroom-fb4fde11-6d8c-4dbe-a096-bc7c561cc906') : null;
 const cacheFiles = cache?.lessons.flatMap(lesson => lesson.scenes.map((_, n) => path.resolve('recordings', lesson.recordingId, `scene-${String(n + 1).padStart(2, '0')}.mp4`)));
 const hashes = cacheFiles?.map(file => require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex'));
@@ -33,6 +36,7 @@ fs.mkdirSync(out, { recursive: true });
     preflight: async (_id, _key, lesson) => ({ amountCny: 17, durationSeconds: lesson.durationSeconds, quotedAt: 'fixture', videoRateCny: .5 }),
     plan: async input => {
       const initial = ++plans === 1, count = initial ? openingSeconds / 5 : 2;
+      if(initial && waitingQA) await waitingGate.promise;
       const output = JSON.stringify({ durationSeconds: count * 5, title: initial ? '彩虹是怎么形成的？' : '继续认识彩虹', bigQuestion: '阳光为何有多种颜色？', suggestedTopics: ['折射', '散射', '水滴'],
         steps: Array.from({ length: count }, (_, n) => ({ role: 'mechanism', concept: `本地测试概念${n + 1}`, narration: '阳光进入水滴后，方向会发生改变。', visualAction: 'The mentor points at a ray and a water droplet.' })) });
       input.record?.('planner-request', { model: 'local-fixture-no-provider', body: { purpose: 'test only' } });
@@ -89,6 +93,23 @@ fs.mkdirSync(out, { recursive: true });
   });
   try {
     await page.goto(base, { waitUntil: 'domcontentloaded' }); await page.waitForSelector('[data-scene-ready="true"]');
+    if (screenshotsQA) {
+      const selector = '.youth-vroid-portrait canvas';
+      await page.waitForFunction(s => document.querySelector(s)?.dataset.handMotion === 'authored-rest', selector);
+      await page.locator('.youth-mentor-bubble[data-visible="true"]').waitFor();
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(out, '01-home.png') });
+      const head = JSON.parse(await page.locator(selector).getAttribute('data-head-bounds'));
+      const x = (head.left + head.right) / 2;
+      for (const dy of [20,35,50,5,65]) {
+        await page.mouse.move(x, head.top + dy); await page.waitForTimeout(80);
+        if (await page.locator(selector).getAttribute('data-mentor-hover') === 'head') break;
+      }
+      await page.mouse.down();
+      await page.waitForFunction(s => Number(document.querySelector(s)?.dataset.petEyes) > .95, selector);
+      await page.screenshot({ path: path.join(out, '02-head-pet.png') });
+      await page.mouse.up();
+    }
     if (!cached) clip = Buffer.from(await page.evaluate(async () => {
       const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 180;
       const ctx = canvas.getContext('2d'), stream = canvas.captureStream(10), recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
@@ -100,10 +121,25 @@ fs.mkdirSync(out, { recursive: true });
     }));
     await page.getByLabel('想学习的问题', { exact: true }).fill('彩虹是怎么形成的？');
     await page.getByRole('button', { name: '开始探索', exact: true }).click();
+    if(waitingQA){
+      await page.locator('.youth-lesson-waiting').waitFor();
+      await page.waitForFunction(()=>{const img=document.querySelector('.youth-waiting-character img');return img?.complete && img.naturalWidth>0;});
+      await page.waitForTimeout(600);
+      await page.screenshot({path:path.join(out,'chibi-waiting.png')});
+      assert.equal(await page.locator('.youth-waiting-character img').count(),1);
+      waitingGate.resolve();
+      await page.waitForSelector('.lesson-video-visible');
+      await page.locator('.youth-lesson-waiting').waitFor({state:'hidden'});
+    }
+    if (screenshotsQA) {
+      await page.waitForTimeout(1600);
+      await page.screenshot({ path: path.join(out, '04-playback.png') });
+    }
     await page.getByLabel('继续学习的问题', { exact: true }).fill('折射');
     await page.getByRole('button', { name: '加入续讲', exact: true }).click();
     await page.getByLabel('继续学习的问题', { exact: true }).fill('散射');
     await page.getByRole('button', { name: '加入续讲', exact: true }).click();
+    if (screenshotsQA) await page.screenshot({ path: path.join(out, '05-follow-up.png') });
     await page.getByRole('button', { name: '提新问题', exact: true }).waitFor();
     await page.waitForTimeout(1000);
     const state = runtime.view(rootId), activations = playback.filter(r => r.kind === 'started' || r.kind === 'advanced');

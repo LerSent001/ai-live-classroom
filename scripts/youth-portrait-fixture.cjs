@@ -18,6 +18,10 @@ module.exports = async function verifyPortraitSwitch(page, out, viewportName) {
   await input.fill('为什么天空是蓝色的？');
   page.on('request', onRequest);
   try {
+    await page.locator('[data-youth-portrait="mentor-female-v2"] img').evaluate(image => image.decode());
+    // Start with the shared female default, exercise both directions, and leave
+    // it selected for the next viewport/playback checks.
+    await page.getByRole('button', { name: '切换为男生形象', exact: true }).click();
     const switchToFemale = page.getByRole('button', { name: '切换为女生形象', exact: true });
     assert.equal(await switchToFemale.getAttribute('type'), 'button');
     assert.equal((await switchToFemale.textContent()).trim(), '', 'The switch must contain no visible text');
@@ -57,6 +61,8 @@ module.exports = async function verifyPortraitSwitch(page, out, viewportName) {
     await female.evaluate(image => image.decode());
     await page.getByRole('button', { name: '切换为男生形象', exact: true }).click();
     await page.locator('[data-youth-portrait="mentor-v1"] img').evaluate(image => image.decode());
+    await page.getByRole('button', { name: '切换为女生形象', exact: true }).click();
+    await female.evaluate(image => image.decode());
     await page.waitForTimeout(250);
     const before = await page.locator('canvas').first().getAttribute('data-render-frames');
     await page.waitForTimeout(1000);

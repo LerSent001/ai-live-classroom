@@ -10,7 +10,7 @@ export function classroomWindowGlass() {
       uTint: { value: new Color("#9fb6c8") },
       uSkyTop: { value: new Color("#9cc4ea") },
       uSkyLow: { value: new Color("#e9eef2") },
-      uOpacity: { value: .14 },
+      uOpacity: { value: .20 },
     },
     vertexShader: `
       varying vec3 vW; varying vec3 vN;
@@ -31,7 +31,7 @@ export function classroomWindowGlass() {
         vec3 R = reflect(-V, N);
         vec3 sky = mix(uSkyLow, uSkyTop, smoothstep(-0.1, 0.6, R.y));
         vec3 col = mix(uTint * 0.55, sky, 0.35 + 0.45 * fres);
-        gl_FragColor = vec4(col, clamp(uOpacity + fres * 0.35, 0.0, 1.0));
+        gl_FragColor = vec4(col, clamp(uOpacity + fres * 0.28, 0.0, 1.0));
         #include <colorspace_fragment>
       }`,
     transparent: true, depthWrite: false, side: DoubleSide,

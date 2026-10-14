@@ -3,6 +3,7 @@
 import { TEACHERS } from "@/lib/classroom-config";
 import { isYouthTeacher } from "@/lib/youth-classroom";
 import { TeacherPortrait } from "@/components/teacher-portrait";
+import { YouthLessonWaiting } from '@/components/youth/lesson-waiting';
 import { waitForMediaPlay, watchMediaLoad } from "@/components/media-watchdog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -691,7 +692,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, on
           {phase === "complete" ? (
             <SignoffCard signoff={signoff} teacherId={teacherId} />
           ) : youth ? (
-            <div className="youth-screen-message"><strong>{surfing ? "正在准备课程" : "正在缓冲视频"}</strong><span>视频就绪后自动播放</span></div>
+            <YouthLessonWaiting preparing={surfing} />
           ) : surfing || !firstFramePainted ? (
             <TuningScreen teacherId={teacherId} />
           ) : (
@@ -719,7 +720,7 @@ export function LessonDeck({ phase, signoff, warning, intent, music, onEvent, on
         </div>
       )}
 
-      {message && !gestureRequired && !poweringOn && (visibleSlot === null || (buffering && stalledLong)) && (
+      {message && !(youth && (visibleSlot === null || !firstFramePainted)) && !gestureRequired && !poweringOn && (visibleSlot === null || (buffering && stalledLong)) && (
         <div className={`stage-message stage-message-${phase}`}>
           <span className="thinking-spark">▮</span>
           <div><strong>{message.title}</strong><small>{message.detail}</small></div>

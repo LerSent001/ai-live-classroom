@@ -48,7 +48,7 @@ try {
   const pageResponse = await fetch(baseUrl);
   const page = await pageResponse.text();
   check(pageResponse.status === 200, "home page responds with HTTP 200");
-  check(page.includes('data-theme="zh-youth"') && page.includes("正在进入教室") && !page.includes("classroom-entrance-loading"), "Chinese classroom is the default home, without bear entrance assets");
+  check(page.includes('data-theme="zh-youth"') && page.includes("正在准备教室") && page.includes("youth-arrival-symbol") && !page.includes("classroom-entrance-loading"), "Chinese classroom is the default home, without bear entrance assets");
   check(!page.includes('id="youth-topic"'), "lesson input waits for the classroom entrance to finish");
   const demoPage = await (await fetch(`${baseUrl}/styles/monokuma`)).text();
   check(demoPage.includes("classroom-entrance-loading"), "Monokuma remains an independent style route");

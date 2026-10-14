@@ -14,4 +14,6 @@ recordings/
 
 # Local QA captures, downloaded source assets and developer outputs
 output/
+# User-supplied VRoid motions: local evaluation only; no redistribution permission.
+public/youth/local-motions/
 .DS_Store

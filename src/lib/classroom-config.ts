@@ -37,10 +37,11 @@ const youthMentorSheets = {
   ],
   [YOUTH_MENTOR_TEACHER_IDS.female]: [
     "1. The only speaking on-screen presenter is the original female classroom mentor, a young human educator; never a bear, rabbit, mascot, or second person.",
-    "2. Identity: dark brown high ponytail tied with a sage-green band, warm amber-brown eyes and friendly youthful face; redraw her as a 2.7-head-tall Japanese SD/Q-style character with a large expressive head and compact body, still a young-adult mentor, consistent across shots.",
-    "3. Outfit: powder-blue rounded-collar button blouse, cream cardigan and slate-blue pleated skirt; keep this modest outfit and its colors exactly, with no uniform or extra accessories.",
-    "4. She explains with expressive open-palm gestures and clearly visible Mandarin lip sync; teaching diagrams may appear beside her.",
-    "5. Render her as 1990s Japanese TV anime hand-painted cel animation: variable ink contour, opaque paint and two-tone hard-edged cel shadows; never modern digital gloss, 3D, or flat vector art.",
+    "2. Identity: black-purple twin ponytails, pointed black cat-ear hair accessories with pale inner ears, warm amber-brown eyes and friendly youthful face; redraw her as a 2.7-head-tall Japanese SD/Q-style character with a large expressive head and compact body, still a young-adult mentor, consistent across shots; no animal tail.",
+    "3. Outfit: white high-neck dress with pale blue seams, puff sleeves and flared ruffle cuffs, narrow waist sash tied in a front bow, knee-length flared skirt and white ankle platform boots; keep this modest outfit and its colors exactly.",
+    "4. She explains with gentle upbeat open-palm gestures, small encouraging nods and clearly visible Mandarin lip sync; teaching diagrams may appear beside her.",
+    "5. Render her as 1990s Japanese TV anime hand-painted cel animation: variable ink contour, opaque cel-paint fills, two-tone hard-edged shadows and restrained painted highlights; never airbrushed digital gloss, 3D, or flat vector art.",
+    "6. Cuteness: large bright rounded amber-brown eyes, soft rounded cheeks, a small friendly smile and faint peach blush. Keep her a young-adult educator, never a child or baby; no exaggerated bouncing or distracting effects.",
   ],
 } as const;
 

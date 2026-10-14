@@ -6,7 +6,7 @@ import { createYouthRoom } from "@/components/youth/room-model";
 test("window and doorway are real openings and the blackboard leaves space for the clock", () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
   Object.defineProperty(globalThis, "document", { configurable: true, value: {
-    createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => {} }) }),
+    createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => ({ addColorStop() {} }) }) }),
   } });
   const geometry = new BoxGeometry(1, 1, 1);
   geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 3).fill(.5), 3));
@@ -20,6 +20,11 @@ test("window and doorway are real openings and the blackboard leaves space for t
     const first = windowHits[0];
     assert.ok(Math.abs(first.point.x + 6.04) < .01, "Window ray reaches the glass, not a solid wall/backplate");
     assert.equal(((first.object as Mesh).material as MeshBasicMaterial).transparent, true);
+    assert.equal(first.object.userData.bakeOccluder, false, 'Window glass transmits baked daylight');
+    const ceilingHit = new Raycaster(new Vector3(4, 4.8, 1), new Vector3(0, 1, 0)).intersectObject(built.room)[0];
+    assert.equal(ceilingHit.object.userData.bakeOccluder, true, 'Solid ceiling must occlude offline rays even when runtime shadows are off');
+    const wallHit = new Raycaster(new Vector3(0, 3, 0), new Vector3(0, 0, -1)).intersectObject(built.room).at(-1)!;
+    assert.equal(wallHit.object.userData.bakeOccluder, true);
     const doorHits = new Raycaster(new Vector3(0, 2.05, -2.5), new Vector3(1, 0, 0)).intersectObject(built.room);
     assert.ok(doorHits[0].point.x > 6, "Door leaf sits inside the wall reveal");
     const board = built.room.children.find(object => object instanceof Mesh && object.material instanceof MeshLambertMaterial && object.material.color.getHexString() === "e6eadd") as Mesh;
