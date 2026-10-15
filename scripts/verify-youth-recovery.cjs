@@ -112,7 +112,9 @@ fs.mkdirSync(out, { recursive: true });
           await page.getByRole('button', { name: '重新加载视频（不重新生成）', exact: true }).click();
           await page.waitForFunction(() => document.querySelector('.lesson-video-visible')?.currentTime > .1);
           await page.locator('.youth-exit').getByText('退出课程', { exact: true }).click();
-          await page.getByRole('heading', { name: '从一个好问题开始', exact: true }).waitFor();
+          const questionInput = page.getByRole('textbox', { name: '想学习的问题', exact: true });
+          await questionInput.waitFor();
+          assert.equal(await questionInput.isEnabled(), true, 'Exit returns to the usable question composer');
           assert.deepEqual(methods, ['?abandon=1']);
           await page.screenshot({ path: path.join(out, 'exit-to-lobby.png') });
         } else {
